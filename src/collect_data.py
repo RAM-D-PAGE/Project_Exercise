@@ -9,15 +9,15 @@ import tkinter as tk
 
 # --- Defensive MediaPipe Import ---
 try:
-    from mediapipe.python.solutions import pose as mp_pose
-    from mediapipe.python.solutions import drawing_utils as mp_drawing
-except (ImportError, ModuleNotFoundError):
+    import mediapipe as mp
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
+except (ImportError, ModuleNotFoundError, AttributeError):
     try:
-        import mediapipe as mp
-        mp_pose = mp.solutions.pose
-        mp_drawing = mp.solutions.drawing_utils
+        from mediapipe.python.solutions import pose as mp_pose  # type: ignore
+        from mediapipe.python.solutions import drawing_utils as mp_drawing  # type: ignore
     except:
-        print("ERROR: MediaPipe installation appears corrupted. Please run 'pip install mediapipe --user'")
+        print("ERROR: MediaPipe not found. Please run 'pip install mediapipe'")
         sys.exit(1)
 
 from utils.geometry import calculate_angle
