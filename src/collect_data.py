@@ -27,9 +27,7 @@ EXERCISE_CLASSES = {
     '0': 'Idle',
     '1': 'Squat_Correct',
     '2': 'Squat_Incorrect',
-    '3': 'Jumping_Jack',
-    '4': 'Bicep_Curl_Correct',
-    '5': 'Bicep_Curl_Incorrect'
+    '3': 'Jumping_Jack'
 }
 
 BASE_DATA_DIR = "data"
@@ -53,6 +51,9 @@ def main():
     os.makedirs(VIDEO_DIR, exist_ok=True)
 
     cap = cv2.VideoCapture(0)
+    # ตั้งค่าความละเอียดกล้องเว็บแคมให้เป็น HD 1280x720 เพื่อความชัดเจนตามเป้าหมายของระบบ
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     
     current_class = '0'
     recording = False
@@ -124,9 +125,10 @@ def main():
         # Draw UI
 
         # Draw UI
-        cv2.rectangle(display_frame, (0, 0), (350, 80), (0, 0, 0), -1)
-        cv2.putText(display_frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
-        cv2.putText(display_frame, f"Frames: {len(data_buffer)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        # ขยายกล่อง HUD ให้กว้างและสูงขึ้นเพื่อรองรับฟอนต์ขนาดใหญ่ HD 720p
+        cv2.rectangle(display_frame, (0, 0), (480, 120), (0, 0, 0), -1)
+        cv2.putText(display_frame, status_text, (15, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, status_color, 2, cv2.LINE_AA)
+        cv2.putText(display_frame, f"Frames: {len(data_buffer)}", (15, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
 
         cv2.imshow('Triple-Mode Data Collection', display_frame)
         
@@ -275,8 +277,9 @@ def process_frame_logic(frame, class_label, timestamp_str, frame_idx):
         )
         
         # Show angles in UI
-        cv2.putText(display_frame, f"L-Knee: {int(l_knee_angle)}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-        cv2.putText(display_frame, f"R-Knee: {int(r_knee_angle)}", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        # ปรับตำแหน่งตัวหนังสือมุมข้อต่อและขนาดฟอนต์ให้ชัดเจนขึ้น
+        cv2.putText(display_frame, f"L-Knee: {int(l_knee_angle)}", (15, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2, cv2.LINE_AA)
+        cv2.putText(display_frame, f"R-Knee: {int(r_knee_angle)}", (15, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2, cv2.LINE_AA)
         
         # Prepare Data Row
         landmarks_row = [class_label, timestamp_str, frame_idx]

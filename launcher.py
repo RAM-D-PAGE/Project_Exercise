@@ -40,11 +40,14 @@ def print_menu():
     print("  │  [4]  🧠  Train Model (เทรน Bi-LSTM)                │")
     print("  │         เทรนโมเดลและ Export เป็น TFLite              │")
     print("  │                                                      │")
+    print("  │  [5]  🖥️  Video Review Display                      │")
+    print("  │         ตรวจสอบความถูกต้องของ AI จากคลิปวิดีโอ       │")
+    print("  │                                                      │")
     print("  ├──────────────────────────────────────────────────────┤")
     print("  │                                                      │")
-    print("  │  [5]  📂  ดูโครงสร้างโปรเจกต์                       │")
-    print("  │  [6]  📊  ดูสถานะข้อมูล & โมเดล                     │")
-    print("  │  [7]  📖  เปิดเอกสาร (Development Documentation)    │")
+    print("  │  [6]  📂  ดูโครงสร้างโปรเจกต์                       │")
+    print("  │  [7]  📊  ดูสถานะข้อมูล & โมเดล                     │")
+    print("  │  [8]  📖  เปิดเอกสาร (Development Documentation)    │")
     print("  │                                                      │")
     print("  │  [0]  ❌  ออกจากโปรแกรม                              │")
     print("  │                                                      │")
@@ -80,6 +83,7 @@ def show_project_structure():
     print("  │   ├── collect_data.py           ← [2] เก็บข้อมูล Landmark")
     print("  │   ├── auto_label_video.py       ← [3] Auto-Label วิดีโอ")
     print("  │   ├── train_model.py            ← [4] เทรน Bi-LSTM")
+    print("  │   ├── review_video.py           ← [5] Video Review Display")
     print("  │   ├── engines/")
     print("  │   │   ├── base_engine.py        ← Abstract Base Class")
     print("  │   │   ├── geometry_engine.py    ← Mode A: Geometry")
@@ -163,8 +167,10 @@ def show_data_status():
     # แนะนำ Workflow
     print("\n  ── 🗺️  ลำดับการทำงานที่แนะนำ ─────────────────────")
     print("    ขั้นที่ 1: [2] Collect Data   หรือ  [3] Auto-Label")
-    print("    ขั้นที่ 2: [4] Train Model")
-    print("    ขั้นที่ 3: [1] Main App → กด C เลือก Mode Bi-LSTM")
+    print("    ขั้นที่ 2: [5] Video Review   ← ตรวจสอบข้อมูลก่อนเทรน")
+    print("    ขั้นที่ 3: [4] Train Model")
+    print("    ขั้นที่ 4: [5] Video Review   ← ตรวจสอบผลหลังเทรน")
+    print("    ขั้นที่ 5: [1] Main App → กด C เลือก Mode Bi-LSTM")
     print()
     input("  กด Enter เพื่อกลับเมนูหลัก...")
 
@@ -189,7 +195,7 @@ def main():
         print_banner()
         print_menu()
 
-        choice = input("  👉 กดเลข (0-7): ").strip()
+        choice = input("  👉 กดเลข (0-8): ").strip()
 
         if choice == '1':
             run_script(os.path.join("src", "main_app.py"))
@@ -200,17 +206,19 @@ def main():
         elif choice == '4':
             run_script(os.path.join("src", "train_model.py"))
         elif choice == '5':
-            show_project_structure()
+            run_script(os.path.join("src", "review_video.py"))
         elif choice == '6':
-            show_data_status()
+            show_project_structure()
         elif choice == '7':
+            show_data_status()
+        elif choice == '8':
             open_documentation()
         elif choice == '0':
             clear_screen()
             print("\n  👋 ขอบคุณที่ใช้งาน! ออกจากโปรแกรม\n")
             break
         else:
-            input("  ❌ กรุณากดเลข 0-7 เท่านั้น (กด Enter เพื่อลองใหม่)")
+            input("  ❌ กรุณากดเลข 0-8 เท่านั้น (กด Enter เพื่อลองใหม่)")
 
 if __name__ == "__main__":
     main()

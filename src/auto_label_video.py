@@ -38,14 +38,13 @@ EXERCISE_OPTIONS = {
     '1': {'name': 'Squat_Correct',        'mode': 'SQUAT',             'class_id': 1},
     '2': {'name': 'Squat_Incorrect',       'mode': 'SQUAT_INCORRECT',   'class_id': 2},
     '3': {'name': 'Jumping_Jack',          'mode': 'JUMPING_JACK',      'class_id': 3},
-    '4': {'name': 'Bicep_Curl_Correct',    'mode': 'BICEP_CURL',        'class_id': 4},
-    '5': {'name': 'Bicep_Curl_Incorrect',  'mode': 'BICEP_CURL',        'class_id': 5},
-    '6': {'name': 'Push-up',              'mode': 'PUSHUP',            'class_id': 1},
+    '4': {'name': 'Push-up',               'mode': 'PUSHUP',            'class_id': 1},
+    '5': {'name': 'Idle',                  'mode': 'IDLE',              'class_id': 0},
 }
 
 CLASS_NAMES = {
     0: 'Idle', 1: 'Squat_Correct', 2: 'Squat_Incorrect',
-    3: 'Jumping_Jack', 4: 'Bicep_Curl_Correct', 5: 'Bicep_Curl_Incorrect',
+    3: 'Jumping_Jack',
 }
 
 FPS_TARGET = 20
@@ -75,12 +74,12 @@ def menu_select_exercise():
     print()
 
     while True:
-        choice = input("  👉 กดเลข (1-6): ").strip()
+        choice = input("  👉 กดเลข (1-5): ").strip()
         if choice in EXERCISE_OPTIONS:
             selected = EXERCISE_OPTIONS[choice]
             print(f"\n  ✅ เลือก: {selected['name']}")
             return selected
-        print("  ❌ กรุณากดเลข 1-6 เท่านั้น")
+        print("  ❌ กรุณากดเลข 1-5 เท่านั้น")
 
 
 def menu_select_input_mode():
@@ -146,6 +145,8 @@ def get_video_folder_dialog():
     video_files = []
     for ext in ['*.mp4', '*.avi', '*.mov', '*.MP4', '*.AVI', '*.MOV']:
         video_files.extend(glob.glob(os.path.join(folder, ext)))
+    # ขจัดไฟล์ซ้ำที่เกิดจาก Case-Insensitivity บน Windows
+    video_files = list(set(os.path.normpath(f) for f in video_files))
     video_files.sort()
     return video_files
 
@@ -160,6 +161,8 @@ def scan_raw_videos(exercise_name):
     video_files = []
     for ext in ['*.mp4', '*.avi', '*.mov', '*.MP4', '*.AVI', '*.MOV']:
         video_files.extend(glob.glob(os.path.join(search_dir, "**", ext), recursive=True))
+    # ขจัดไฟล์ซ้ำที่เกิดจาก Case-Insensitivity บน Windows
+    video_files = list(set(os.path.normpath(f) for f in video_files))
     video_files.sort()
 
     if video_files:
@@ -236,25 +239,36 @@ def detect_exercise_phase(lm_list, exercise_mode):
         avg_arm = (l_arm + r_arm) / 2
         return avg_arm > 45, avg_arm, "Arm"
 
-    elif exercise_mode == 'BICEP_CURL':
-        l_elbow = calculate_angle(
-            [lm_list[11][0], lm_list[11][1]],
-            [lm_list[13][0], lm_list[13][1]],
-            [lm_list[15][0], lm_list[15][1]]
-        )
-        r_elbow = calculate_angle(
-            [lm_list[12][0], lm_list[12][1]],
-            [lm_list[14][0], lm_list[14][1]],
-            [lm_list[16][0], lm_list[16][1]]
-        )
-        avg_elbow = (l_elbow + r_elbow) / 2
-        return avg_elbow < 120, avg_elbow, "Elbow"
+    elif exercise_mode == 'IDLE':
+        # สำหรับคลาส Idle ทุกเฟรมจะถูกแปะป้ายเป็นคลาส 0 (Idle) เสมอ
+        return False, 0.0, "N/A"
 
     return False, 0.0, "N/A"
 
 
 def process_single_video(video_path, exercise_mode, active_class_id, show_preview=True):
     """ประมวลผลวิดีโอ 1 ไฟล์"""
+    # ตรวจสอบขนาดจอภาพจริงเพื่อป้องกันไม่ให้แสดงผลล้นหน้าจอ
+    screen_w, screen_h = 1280, 720
+    try:
+        if os.name == 'nt':
+            import ctypes
+            screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+            screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+        else:
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            screen_w = root.winfo_screenwidth()
+            screen_h = root.winfo_screenheight()
+            root.destroy()
+    except:
+        pass
+
+    # กำหนดขนาดหน้าต่างพรีวิวให้ใหญ่เกือบเท่าความสูงขอบจอแนวตั้ง (ลบ 100px สำหรับขอบหน้าต่างและ Taskbar)
+    max_width = max(480, screen_w - 100)
+    max_height = max(480, screen_h - 100)
+
     pose_tracker = mp_pose.Pose(
         model_complexity=1,
         min_detection_confidence=0.5,
@@ -268,6 +282,8 @@ def process_single_video(video_path, exercise_mode, active_class_id, show_previe
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     video_fps = cap.get(cv2.CAP_PROP_FPS)
+    if video_fps <= 0:
+        video_fps = 30.0
 
     print(f"  📹 ไฟล์: {os.path.basename(video_path)} ({total_frames} frames, {video_fps:.0f} FPS)")
 
@@ -276,17 +292,33 @@ def process_single_video(video_path, exercise_mode, active_class_id, show_previe
     idle_count = 0
     active_count = 0
     skip_count = 0
-    prev_time = 0
+    
+    raw_frame_idx = 0
+    next_target_time = 0.0
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
-        curr_time = time.time()
-        if curr_time - prev_time < 1.0 / FPS_TARGET:
+        # คำนวณเวลาจำลองของเฟรมปัจจุบันในวิดีโอ
+        current_video_time = raw_frame_idx / video_fps
+        raw_frame_idx += 1
+
+        # ข้ามเฟรมถ้ายังไม่ถึงเวลาเก็บตาม target FPS (20 FPS)
+        if current_video_time < next_target_time:
             continue
-        prev_time = curr_time
+        next_target_time += 1.0 / FPS_TARGET
+
+        # เช็คขีดจำกัดสำหรับคลาส Idle (จำกัดสูงสุด 200 เฟรมเพื่อไม่ให้ข้อมูล imbalance)
+        if exercise_mode == 'IDLE' and len(data_buffer) >= 200:
+            print(f"  ℹ️ สแกนคลาส Idle ครบ 200 เฟรมแล้ว (ตัดจบอัตโนมัติเพื่อประหยัดเวลา)")
+            break
+
+        # Safety Limit สำหรับคลาสทั่วไป (สูงสุด 1,000 เฟรม) เพื่อป้องกันไฟล์วิดีโอที่ยาวเกินไปโดยไม่ได้ตั้งใจ
+        if len(data_buffer) >= 1000:
+            print(f"  ℹ️ สแกนข้อมูลครบขีดจำกัดความปลอดภัยสูงสุด 1,000 เฟรมแล้ว (ตัดจบอัตโนมัติ)")
+            break
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose_tracker.process(rgb_frame)
@@ -325,26 +357,37 @@ def process_single_video(video_path, exercise_mode, active_class_id, show_previe
             data_buffer.append(row)
 
             if show_preview:
+                # 1. ย่อสเกลภาพให้เหมาะสมกับจอภาพก่อนวาด HUD และ Landmarks
+                h_orig, w_orig = frame.shape[:2]
+                scale_w = max_width / w_orig
+                scale_h = max_height / h_orig
+                scale = min(scale_w, scale_h)
+                
+                if scale < 1.0:
+                    display_frame = cv2.resize(frame, (int(w_orig * scale), int(h_orig * scale)))
+                else:
+                    display_frame = frame.copy()
+
+                # 2. วาด Landmarks บนภาพที่ย่อสเกลแล้ว เพื่อคงความหนาของกระดูกและข้อต่อให้ชัดเจน
                 mp_drawing.draw_landmarks(
-                    frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                    display_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
                     landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
                     connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=2)
                 )
-                cv2.rectangle(frame, (0, 0), (520, 80), (0, 0, 0), -1)
-                cv2.putText(frame, f"Label: {label_name}", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-                cv2.putText(frame, f"{angle_name}: {int(debug_angle)} | Frame: {frame_count}/{total_frames}",
-                            (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
-                # Resize ให้หน้าต่างไม่ใหญ่เกินไป (จำกัดความกว้างไม่เกิน 640px)
-                h_orig, w_orig = frame.shape[:2]
-                max_width = 640
-                if w_orig > max_width:
-                    scale = max_width / w_orig
-                    display_frame = cv2.resize(frame, (max_width, int(h_orig * scale)))
-                else:
-                    display_frame = frame
+                # 3. วาดกล่อง HUD สีดำที่ด้านบนของวิดีโอ (กว้างเต็มรูปภาพที่ย่อแล้ว)
+                disp_h, disp_w = display_frame.shape[:2]
+                cv2.rectangle(display_frame, (0, 0), (disp_w, 90), (0, 0, 0), -1)
+
+                # 4. เขียนข้อความ HUD ขนาดใหญ่และคมชัดด้วย LINE_AA
+                cv2.putText(display_frame, f"Label: {label_name}", (15, 35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2, cv2.LINE_AA)
+                cv2.putText(display_frame, f"{angle_name}: {int(debug_angle)} | Frame: {raw_frame_idx}/{total_frames}",
+                            (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 0), 2, cv2.LINE_AA)
+
                 cv2.imshow('Auto-Labeling (Q = Stop)', display_frame)
+                # จัดตำแหน่งหน้าต่างให้ไปแสดงด้านซ้ายบนสุด (0, 0) อัตโนมัติ เพื่อชิดขอบจอด้านซ้ายและไม่บังโค้ด
+                cv2.moveWindow('Auto-Labeling (Q = Stop)', 0, 0)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     print("  ⏹ หยุดโดยผู้ใช้")
                     break

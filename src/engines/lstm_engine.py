@@ -23,13 +23,11 @@ CLASS_NAMES = {
     0: 'Idle',
     1: 'Squat_Correct',
     2: 'Squat_Incorrect',
-    3: 'Jumping_Jack',
-    4: 'Bicep_Curl_Correct',
-    5: 'Bicep_Curl_Incorrect'
+    3: 'Jumping_Jack'
 }
 
 # Exercise classes ที่ต้องนับ Rep (ไม่รวม Idle และ Incorrect)
-REP_COUNTING_CLASSES = {1, 3, 4}  # Squat_Correct, Jumping_Jack, Bicep_Curl_Correct
+REP_COUNTING_CLASSES = {1, 3}  # Squat_Correct, Jumping_Jack
 
 
 class LSTMEngine(ExerciseEngine):
@@ -144,7 +142,7 @@ class LSTMEngine(ExerciseEngine):
 
         # 6. State Machine สำหรับนับ Rep
         status_color = (0, 255, 0)  # Green (default)
-        self._update_rep_counter(predicted_class_id, confidence)
+        self._update_rep_counter(predicted_class_id, confidence, landmarks)
 
         # กำหนดสีตามสถานะ
         if predicted_class_id == 0:
@@ -163,13 +161,16 @@ class LSTMEngine(ExerciseEngine):
             "confidence": round(confidence, 3)
         }
 
-    def _update_rep_counter(self, predicted_class_id, confidence):
+    def _update_rep_counter(self, predicted_class_id, confidence, landmarks):
         """
         State Machine สำหรับนับ Repetitions จากผล Classification
         Logic: Idle → Active (เริ่มท่า) → Idle (จบท่า = 1 Rep)
         ใช้ Confidence threshold เพื่อลด False Positive
+        พร้อมเพิ่มระบบวิเคราะห์ฟีดแบ็กแนะนำการปรับปรุงท่าทางเชิงเรขาคณิตแบบสดๆ
         """
+        import time
         CONFIDENCE_THRESHOLD = 0.6
+        lm_list = [[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks]
 
         if confidence < CONFIDENCE_THRESHOLD:
             self.feedback = f"Low confidence ({confidence:.0%})"
@@ -180,33 +181,96 @@ class LSTMEngine(ExerciseEngine):
             # เข้าสู่ท่าออกกำลังกาย
             if not self.in_active_phase:
                 self.in_active_phase = True
+                self.active_start_time = time.time()
                 self.current_phase = 1
                 self.feedback = f"Performing: {CLASS_NAMES[predicted_class_id]}"
             else:
                 self.current_phase = 2
-                self.feedback = f"Active: {CLASS_NAMES[predicted_class_id]} ({confidence:.0%})"
+                
+                # ตรวจเช็คคุณลักษณะเชิงเรขาคณิตระหว่างทำท่าทางเพื่อส่งฟีดแบ็กแนะนำเชิงรุก (Proactive Advice)
+                if predicted_class_id == 1:  # Squat_Correct
+                    # เช็คระยะห่างข้อเท้าซ้าย-ขวา เทียบไหล่
+                    d_ankles = abs(lm_list[27][0] - lm_list[28][0])
+                    d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
+                    if d_shoulders > 0:
+                        ratio = d_ankles / d_shoulders
+                        if ratio < 0.8:
+                            self.feedback = "[แนะนำ] ยืดอกขึ้น และขยับเท้ากว้างขึ้นเล็กน้อย"
+                        elif ratio > 1.6:
+                            self.feedback = "[แนะนำ] ยืนเท้ากว้างเกินไป ขยับเท้าชิดขึ้นหน่อย"
+                        else:
+                            self.feedback = "ท่าทางและตำแหน่งเท้าดีมาก ย่อตัวลงลึกไว้"
+                elif predicted_class_id == 3:  # Jumping_Jack
+                    # เช็คระยะแยกขาเทียบไหล่ และความสูงของมือ
+                    d_ankles = abs(lm_list[27][0] - lm_list[28][0])
+                    d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
+                    arm_angle = calculate_angle(lm_list[24], lm_list[12], lm_list[16])
+                    
+                    if d_shoulders > 0 and d_ankles / d_shoulders < 1.1:
+                        self.feedback = "[แนะนำ] กระโดดแยกขาให้กว้างขึ้นสัมพันธ์กับจังหวะยกมือ"
+                    elif arm_angle < 135:
+                        self.feedback = "[แนะนำ] ยกมือชูขึ้นให้สูงขึ้นระดับเหนือศีรษะ"
+                    else:
+                        self.feedback = "กางแขนและแยกขาได้จังหวะสวยงาม"
 
         elif predicted_class_id == 0 and self.in_active_phase:
             # กลับมาที่ Idle หลังจากอยู่ในท่า → นับ 1 Rep
+            duration = time.time() - getattr(self, 'active_start_time', time.time())
             self.reps_count += 1
             self.in_active_phase = False
             self.current_phase = 0
-            self.feedback = f"Rep {self.reps_count} Complete!"
+            
+            # แนะนำเรื่องความเร็ว/จังหวะ
+            if duration < 1.3:
+                self.feedback = f"ครั้งที่ {self.reps_count} สำเร็จ! (ย่อลุกเร็วไปนิด ช้าลงหน่อย)"
+            else:
+                self.feedback = f"ครั้งที่ {self.reps_count} สำเร็จ! จังหวะดีมาก"
 
         elif predicted_class_id == 0:
             self.current_phase = 0
             self.feedback = "Idle - Ready"
 
         else:
-            # Incorrect form detected
-            self.feedback = f"⚠ Form check: {CLASS_NAMES[predicted_class_id]}"
+            # Incorrect form detected (คลาส 2 หรือคลาสผิดฟอร์มอื่นๆ)
+            # ล้างสถานะ Active ทันที ป้องกันปัญหายังทำท่าผิดแต่ดันนับ
+            self.in_active_phase = False 
             self.current_phase = -1
+            
+            # วิเคราะห์เจาะลึกว่าผิดฟอร์มเรื่องอะไร
+            if predicted_class_id == 2:  # Squat_Incorrect
+                l_knee = calculate_angle([lm_list[23][0], lm_list[23][1]], [lm_list[25][0], lm_list[25][1]], [lm_list[27][0], lm_list[27][1]])
+                r_knee = calculate_angle([lm_list[24][0], lm_list[24][1]], [lm_list[26][0], lm_list[26][1]], [lm_list[28][0], lm_list[28][1]])
+                avg_knee = (l_knee + r_knee) / 2
+                
+                # เช็คระยะห่างเท้า
+                d_ankles = abs(lm_list[27][0] - lm_list[28][0])
+                d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
+                ratio = d_ankles / d_shoulders if d_shoulders > 0 else 1.0
+                
+                if avg_knee > 140:
+                    self.feedback = "[!] ย่อตัวไม่สุด! พยายามย่อสะโพกลงให้ลึกขึ้นอีก"
+                elif ratio < 0.8:
+                    self.feedback = "[!] ขาแคบเกินไป! ลุกขึ้นยืนแล้วขยับเท้ากว้างขึ้น"
+                elif ratio > 1.7:
+                    self.feedback = "[!] ขากว้างเกินไป! ขยับเท้าชิดเข้ามาเล็กน้อย"
+                else:
+                    self.feedback = "[!] ท่าทางผิดฟอร์ม! ยืดอก หลังตรง ไม่ก้มหน้า"
+            else:
+                self.feedback = f"[!] ท่าทางผิดปกติ: {CLASS_NAMES[predicted_class_id]}"
 
         self.prev_class = predicted_class_id
 
+    def reset_active_state(self):
+        """รีเซ็ตเฉพาะสถานะทำท่าทางชั่วคราวและล้างบัฟเฟอร์เฟรม (ไม่รีเซ็ต reps_count) เพื่อกันเดินเข้ากล้องแล้วนับ 1"""
+        self.frame_buffer.clear()
+        self.in_active_phase = False
+        self.prev_class = 0
+        self.current_phase = 0
+
     def reset(self):
-        """Override reset to also clear the frame buffer."""
+        """Override reset to also clear the frame buffer and state."""
         super().reset()
         self.frame_buffer.clear()
         self.prev_class = 0
         self.in_active_phase = False
+        self.current_phase = 0
