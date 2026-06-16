@@ -57,6 +57,11 @@ class GeometryEngine(ExerciseEngine):
         ratio = d_ankles / d_shoulders if d_shoulders > 0 else 1.0
         back_angle = calculate_angle(landmarks[11], landmarks[23], landmarks[25])
 
+        # ตรวจจับมุมมองด้านข้าง (Side/Profile View)
+        # ความกว้างไหล่เทียบกับความสูงของลำตัว
+        torso_height = (abs(landmarks[11][1] - landmarks[23][1]) + abs(landmarks[12][1] - landmarks[24][1])) / 2
+        is_side_view = (d_shoulders / torso_height < 0.35) if torso_height > 0 else False
+
         if angle > self.thresholds['SQUAT']['stand']:
             if self.current_phase == 3:
                 duration = time.time() - getattr(self, 'active_start_time', time.time())
@@ -84,10 +89,10 @@ class GeometryEngine(ExerciseEngine):
         
         # ค้นหาข้อผิดพลาดที่เกิดขึ้นขณะเคลื่อนไหว (Phase 1 ย่อลง หรือ Phase 2 ย่อสุด)
         if self.current_phase in [1, 2]:
-            if ratio < 0.8:
+            if not is_side_view and ratio < 0.8:
                 self.feedback = "[!] ขาแคบไป! ขยับเท้ากว้างเท่าช่วงไหล่"
                 status_color = (0, 0, 255)
-            elif ratio > 1.7:
+            elif not is_side_view and ratio > 1.7:
                 self.feedback = "[!] ขากว้างไป! ขยับเท้าชิดเข้ามาเล็กน้อย"
                 status_color = (0, 0, 255)
             elif back_angle < 75:
@@ -180,6 +185,10 @@ class GeometryEngine(ExerciseEngine):
         d_shoulders = abs(landmarks[11][0] - landmarks[12][0])
         leg_ratio = d_ankles / d_shoulders if d_shoulders > 0 else 1.0
 
+        # ตรวจจับมุมมองด้านข้าง (Side/Profile View)
+        torso_height = (abs(landmarks[11][1] - landmarks[23][1]) + abs(landmarks[12][1] - landmarks[24][1])) / 2
+        is_side_view = (d_shoulders / torso_height < 0.35) if torso_height > 0 else False
+
         # 3. State Machine Logic
         if angle < self.thresholds['JUMPING_JACK']['down']:
             if self.current_phase == 3:
@@ -190,11 +199,11 @@ class GeometryEngine(ExerciseEngine):
             self.current_phase = 0
         elif angle > self.thresholds['JUMPING_JACK']['up']:
             self.current_phase = 2
-            if leg_ratio < 1.2:
+            if not is_side_view and leg_ratio < 1.2:
                 self.feedback = "[!] ยกมือขึ้นสุดแล้ว แต่ยังไม่ได้แยกขา!"
                 status_color = (0, 0, 255)
             else:
-                self.feedback = "Hands above head! Leg opened"
+                self.feedback = "Hands above head!" + ("" if is_side_view else " Leg opened")
                 status_color = (255, 255, 0) 
         elif self.thresholds['JUMPING_JACK']['down'] <= angle <= self.thresholds['JUMPING_JACK']['up']:
             if self.current_phase == 0 or self.current_phase == 1:

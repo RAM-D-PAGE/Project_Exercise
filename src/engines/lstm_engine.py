@@ -225,30 +225,49 @@ class LSTMEngine(ExerciseEngine):
                     # เช็คระยะห่างข้อเท้าซ้าย-ขวา เทียบไหล่
                     d_ankles = abs(lm_list[27][0] - lm_list[28][0])
                     d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
-                    if d_shoulders > 0:
-                        ratio = d_ankles / d_shoulders
-                        if ratio < 0.8:
-                            self.feedback = "[แนะนำ] ยืดอกขึ้น และขยับเท้ากว้างขึ้นเล็กน้อย"
-                            self.is_geom_incorrect = True
-                        elif ratio > 1.6:
-                            self.feedback = "[แนะนำ] ยืนเท้ากว้างเกินไป ขยับเท้าชิดขึ้นหน่อย"
-                            self.is_geom_incorrect = True
-                        else:
-                            self.feedback = "ท่าทางและตำแหน่งเท้าดีมาก ย่อตัวลงลึกไว้"
+                    
+                    # ตรวจจับมุมมองด้านข้าง (Side/Profile View)
+                    torso_height = (abs(lm_list[11][1] - lm_list[23][1]) + abs(lm_list[12][1] - lm_list[24][1])) / 2
+                    is_side_view = (d_shoulders / torso_height < 0.35) if torso_height > 0 else False
+                    
+                    if is_side_view:
+                        self.feedback = "มุมมองด้านข้าง: ท่าทางและมุมย่อเข่าดีมาก ย่อตัวลงลึกไว้"
+                    else:
+                        if d_shoulders > 0:
+                            ratio = d_ankles / d_shoulders
+                            if ratio < 0.8:
+                                self.feedback = "[แนะนำ] ยืดอกขึ้น และขยับเท้ากว้างขึ้นเล็กน้อย"
+                                self.is_geom_incorrect = True
+                            elif ratio > 1.6:
+                                self.feedback = "[แนะนำ] ยืนเท้ากว้างเกินไป ขยับเท้าชิดขึ้นหน่อย"
+                                self.is_geom_incorrect = True
+                            else:
+                                self.feedback = "ท่าทางและตำแหน่งเท้าดีมาก ย่อตัวลงลึกไว้"
                 elif predicted_class_id == 3:  # Jumping_Jack
                     # เช็คระยะแยกขาเทียบไหล่ และความสูงของมือ
                     d_ankles = abs(lm_list[27][0] - lm_list[28][0])
                     d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
                     arm_angle = calculate_angle(lm_list[24], lm_list[12], lm_list[16])
                     
-                    if d_shoulders > 0 and d_ankles / d_shoulders < 1.1:
-                        self.feedback = "[แนะนำ] กระโดดแยกขาให้กว้างขึ้นสัมพันธ์กับจังหวะยกมือ"
-                        self.is_geom_incorrect = True
-                    elif arm_angle < 135:
-                        self.feedback = "[แนะนำ] ยกมือชูขึ้นให้สูงขึ้นระดับเหนือศีรษะ"
-                        self.is_geom_incorrect = True
+                    # ตรวจจับมุมมองด้านข้าง (Side/Profile View)
+                    torso_height = (abs(lm_list[11][1] - lm_list[23][1]) + abs(lm_list[12][1] - lm_list[24][1])) / 2
+                    is_side_view = (d_shoulders / torso_height < 0.35) if torso_height > 0 else False
+                    
+                    if is_side_view:
+                        if arm_angle < 135:
+                            self.feedback = "[แนะนำ] ยกมือชูขึ้นให้สูงขึ้นระดับเหนือศีรษะ"
+                            self.is_geom_incorrect = True
+                        else:
+                            self.feedback = "ยกมือชูขึ้นจังหวะดีมาก"
                     else:
-                        self.feedback = "กางแขนและแยกขาได้จังหวะสวยงาม"
+                        if d_shoulders > 0 and d_ankles / d_shoulders < 1.1:
+                            self.feedback = "[แนะนำ] กระโดดแยกขาให้กว้างขึ้นสัมพันธ์กับจังหวะยกมือ"
+                            self.is_geom_incorrect = True
+                        elif arm_angle < 135:
+                            self.feedback = "[แนะนำ] ยกมือชูขึ้นให้สูงขึ้นระดับเหนือศีรษะ"
+                            self.is_geom_incorrect = True
+                        else:
+                            self.feedback = "กางแขนและแยกขาได้จังหวะสวยงาม"
 
         elif predicted_class_id == 0 and self.in_active_phase:
             # กลับมาที่ Idle หลังจากอยู่ในท่า → นับ 1 Rep
@@ -284,14 +303,21 @@ class LSTMEngine(ExerciseEngine):
                 d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
                 ratio = d_ankles / d_shoulders if d_shoulders > 0 else 1.0
                 
+                # ตรวจจับมุมมองด้านข้าง (Side/Profile View)
+                torso_height = (abs(lm_list[11][1] - lm_list[23][1]) + abs(lm_list[12][1] - lm_list[24][1])) / 2
+                is_side_view = (d_shoulders / torso_height < 0.35) if torso_height > 0 else False
+                
                 if avg_knee > 140:
                     self.feedback = "[!] ย่อตัวไม่สุด! พยายามย่อสะโพกลงให้ลึกขึ้นอีก"
-                elif ratio < 0.8:
-                    self.feedback = "[!] ขาแคบเกินไป! ลุกขึ้นยืนแล้วขยับเท้ากว้างขึ้น"
-                elif ratio > 1.7:
-                    self.feedback = "[!] ขากว้างเกินไป! ขยับเท้าชิดเข้ามาเล็กน้อย"
+                elif is_side_view:
+                    self.feedback = "[!] ท่าทางผิดฟอร์ม! ยืดอก หลังตรง ไม่ก้มหน้า และย่อก้นลงให้ลึก"
                 else:
-                    self.feedback = "[!] ท่าทางผิดฟอร์ม! ยืดอก หลังตรง ไม่ก้มหน้า"
+                    if ratio < 0.8:
+                        self.feedback = "[!] ขาแคบเกินไป! ลุกขึ้นยืนแล้วขยับเท้ากว้างขึ้น"
+                    elif ratio > 1.7:
+                        self.feedback = "[!] ขากว้างเกินไป! ขยับเท้าชิดเข้ามาเล็กน้อย"
+                    else:
+                        self.feedback = "[!] ท่าทางผิดฟอร์ม! ยืดอก หลังตรง ไม่ก้มหน้า"
             else:
                 self.feedback = f"[!] ท่าทางผิดปกติ: {CLASS_NAMES[predicted_class_id]}"
 
