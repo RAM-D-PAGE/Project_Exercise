@@ -27,8 +27,9 @@ except (ImportError, ModuleNotFoundError):
         sys.exit(1)
 from src.engines.geometry_engine import GeometryEngine
 from src.engines.lstm_engine import LSTMEngine
-from src.utils.speech_layer import speak_feedback, get_speech_assistant
+from src.utils.speech_layer import speak_feedback, get_speech_assistant, toggle_speech_mute
 from src.utils.analytics import WorkoutAnalytics
+from src.utils.ui_utils import draw_live_hud
 
 EXERCISES = {
     '1': 'Squat_Correct',
@@ -57,118 +58,7 @@ def create_engine(mode_key, exercise_name):
         return GeometryEngine(exercise_name)
 
 
-def draw_thai_text(img, text, position, font_size=20, color=(255, 255, 255)):
-    """
-    วาดข้อความภาษาไทย/อังกฤษ ลงบนภาพ OpenCV (numpy array) โดยใช้ Pillow และจัดลำดับการโหลดฟอนต์
-    """
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(img_rgb)
-        draw = ImageDraw.Draw(pil_img)
-        
-        font_paths = [
-            # 1. Local Font ในโครงการ
-            os.path.join(os.path.dirname(__file__), "utils", "Sarabun-Regular.ttf"),
-            # 2. ค้นหาชื่อฟอนต์โดยตรง (PIL จะค้นหาใน System Font Directory)
-            "tahoma",
-            "LeelawUI",
-            "arial",
-            # 3. Path มาตรฐานบน Windows
-            "C:\\Windows\\Fonts\\tahoma.ttf",
-            "C:\\Windows\\Fonts\\LeelawUI.ttf",
-            "C:\\Windows\\Fonts\\arial.ttf"
-        ]
-        font = None
-        for path in font_paths:
-            try:
-                font = ImageFont.truetype(path, font_size)
-                break
-            except:
-                continue
-                
-        if font is None:
-            font = ImageFont.load_default()
-            
-        rgb_color = (color[2], color[1], color[0])
-        draw.text(position, text, font=font, fill=rgb_color)
-        return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-    except Exception as e:
-        import traceback
-        print(f"  ⚠️ [draw_thai_text ERROR]: {e}")
-        traceback.print_exc()
-        # Fallback กรณีดึง PIL ไม่ได้
-        cv2.putText(img, text, (position[0], position[1] + font_size), 
-                    cv2.FONT_HERSHEY_SIMPLEX, font_size/32.0, color, 2, cv2.LINE_AA)
-        return img
 
-def draw_ui_panel(frame, engine_result, mode_name, exercise_name, fps):
-    """
-    Draws a HUD (Heads-Up Display) panel on the frame showing:
-    - Current mode and exercise
-    - Rep count, phase, feedback
-    - FPS and confidence (for LSTM)
-    """
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-
-    # --- Top Panel (Mode & Exercise Info) ---
-    # ขยายกล่องบนให้กว้างและสูงขึ้นเพื่อรองรับตัวหนังสือขนาดใหญ่ HD 720p
-    cv2.rectangle(overlay, (0, 0), (480, 130), (20, 20, 20), -1)
-    cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
-
-    cv2.putText(frame, f"Mode: {mode_name}", (15, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 255), 2, cv2.LINE_AA)
-    cv2.putText(frame, f"Exercise: {exercise_name}", (15, 60),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 200), 2, cv2.LINE_AA)
-    cv2.putText(frame, f"FPS: {fps:.1f}", (15, 90),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2, cv2.LINE_AA)
-
-    # Confidence (only for LSTM mode)
-    if 'confidence' in engine_result:
-        conf = engine_result['confidence']
-        conf_color = (0, 255, 0) if conf > 0.7 else (0, 255, 255) if conf > 0.4 else (0, 0, 255)
-        cv2.putText(frame, f"Confidence: {conf:.0%}", (15, 115),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, conf_color, 2, cv2.LINE_AA)
-    if 'predicted_class' in engine_result:
-        cv2.putText(frame, f"Predicted: {engine_result['predicted_class']}", (240, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 200, 100), 2, cv2.LINE_AA)
-
-    # --- Bottom Panel (Rep Counter & Feedback) ---
-    # ปรับขยับ HUD ล่างให้อ่านฟีดแบ็กขนาดใหญ่ชัดเจนขึ้น
-    panel_y = h - 110
-    overlay2 = frame.copy()
-    cv2.rectangle(overlay2, (0, panel_y), (w, h), (20, 20, 20), -1)
-    cv2.addWeighted(overlay2, 0.75, frame, 0.25, 0, frame)
-
-    # Rep Count (large)
-    count = engine_result.get('count', 0)
-    cv2.putText(frame, f"REPS: {count}", (20, panel_y + 45),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 255, 255), 3, cv2.LINE_AA)
-
-    # Feedback (รองรับการแสดงผลภาษาไทยด้วย Pillow)
-    feedback = engine_result.get('feedback', '')
-    status_color = engine_result.get('status_color', (255, 255, 255))
-    frame = draw_thai_text(frame, feedback, (20, panel_y + 60), font_size=28, color=status_color)
-
-    # Debug angle (for Geometry mode)
-    if 'debug_angle' in engine_result:
-        cv2.putText(frame, f"Angle: {engine_result['debug_angle']}", (w - 220, panel_y + 45),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 0), 2, cv2.LINE_AA)
-
-    # Phase indicator
-    phase = engine_result.get('phase', 0)
-    phase_x_start = w - 220
-    cv2.putText(frame, "Phase:", (phase_x_start, panel_y + 85),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 2, cv2.LINE_AA)
-    for i in range(4):
-        cx = phase_x_start + 80 + i * 30
-        cy = panel_y + 80
-        color = (0, 255, 0) if i <= phase else (80, 80, 80)
-        cv2.circle(frame, (cx, cy), 10, color, -1)
-
-    return frame
 
 
 def print_controls():
@@ -216,6 +106,13 @@ def main():
 
     prev_time = time.time()
 
+    # --- Live Recording & Calibration States ---
+    is_recording = False
+    video_writer = None
+    calibration_active = False
+    calibration_start_time = 0.0
+    calibration_angles = []
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -243,15 +140,6 @@ def main():
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
 
-            # Draw Skeleton
-            mp_drawing.draw_landmarks(
-                frame,
-                results.pose_landmarks,
-                mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
-                connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=2)
-            )
-
             # --- Run Engine ---
             if current_mode == 'a':
                 # Geometry engine expects list of [x, y] per landmark
@@ -260,10 +148,63 @@ def main():
             elif current_mode == 'c':
                 # LSTM engine extracts features internally from raw landmarks
                 engine_result = engine.process(landmarks, (w, h))
+
+            # Draw Skeleton (Buffering indicator)
+            is_buffering = (engine_result.get('predicted_class') == 'Buffering')
+            skeleton_color = (0, 140, 255) if is_buffering else (0, 255, 0)
+            connection_color = (0, 100, 200) if is_buffering else (0, 200, 0)
+            mp_drawing.draw_landmarks(
+                frame,
+                results.pose_landmarks,
+                mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=mp_drawing.DrawingSpec(color=skeleton_color, thickness=2, circle_radius=2),
+                connection_drawing_spec=mp_drawing.DrawingSpec(color=connection_color, thickness=2)
+            )
         else:
             # หากตรวจไม่พบกระดูก (หลุดขอบกล้อง) ให้เคลียร์สถานะ Active ชั่วคราวเพื่อกันบั๊กเดินเข้ากล้องแล้วนับ 1
             if hasattr(engine, 'reset_active_state'):
                 engine.reset_active_state()
+
+        # --- Auto-Calibration Logic ---
+        if calibration_active:
+            elapsed = time.time() - calibration_start_time
+            if elapsed < 5.0:
+                angle = engine_result.get('debug_angle', None)
+                if angle is not None:
+                    calibration_angles.append(angle)
+                engine_result['feedback'] = f"🔧 บันทึกมุมข้อต่อ... ทำท่า 1 ครั้ง ({5.0 - elapsed:.1f} วินาที)"
+                engine_result['status_color'] = (0, 165, 255)  # Orange
+            else:
+                calibration_active = False
+                if calibration_angles:
+                    min_ang = min(calibration_angles)
+                    max_ang = max(calibration_angles)
+                    ex_name = EXERCISES[current_exercise]
+                    
+                    if current_mode == 'a' and hasattr(engine, 'processor'):
+                        msg = ""
+                        if "Squat" in ex_name:
+                            new_stand = max(140.0, max_ang - 10.0)
+                            new_bottom = min(115.0, min_ang + 10.0)
+                            engine.processor.thresholds['stand'] = new_stand
+                            engine.processor.thresholds['bottom'] = new_bottom
+                            msg = f"ปรับแต่งเกณฑ์สำเร็จ ยืน: {new_stand:.0f}, ย่อ: {new_bottom:.0f}"
+                        elif "Pushup" in ex_name:
+                            new_plank = max(140.0, max_ang - 10.0)
+                            new_bottom = min(110.0, min_ang + 10.0)
+                            engine.processor.thresholds['plank'] = new_plank
+                            engine.processor.thresholds['bottom'] = new_bottom
+                            msg = f"ปรับแต่งเกณฑ์สำเร็จ แพลงก์: {new_plank:.0f}, ย่อ: {new_bottom:.0f}"
+                        elif "Jumping" in ex_name:
+                            new_down = min(60.0, min_ang + 10.0)
+                            new_up = max(130.0, max_ang - 10.0)
+                            engine.processor.thresholds['down'] = new_down
+                            engine.processor.thresholds['up'] = new_up
+                            msg = f"ปรับแต่งเกณฑ์สำเร็จ หุบ: {new_down:.0f}, กาง: {new_up:.0f}"
+                        
+                        if msg:
+                            speak_feedback(msg)
+                            print(f"\n[CALIBRATION] {msg}\n")
 
         # --- Log frame & Voice Feedback ---
         frame_idx += 1
@@ -271,17 +212,23 @@ def main():
         rep_count = engine_result.get('count', 0)
         phase = engine_result.get('phase', 0)
         status_color = engine_result.get('status_color', (255, 255, 255))
-        analytics.log_frame(frame_idx, angle, rep_count, phase, status_color)
+        confidence = engine_result.get('confidence', None)
+        predicted_class = engine_result.get('predicted_class', None)
+        analytics.log_frame(frame_idx, angle, rep_count, phase, status_color, confidence, predicted_class)
 
-        # Asynchronous voice feedback
+        # Asynchronous voice feedback (ไม่พูดซ้ำหากกำลังทำ calibration)
         feedback_text = engine_result.get('feedback', '')
-        if feedback_text and feedback_text not in ["No pose detected", "Ready", "Stand straight - Ready", "High Plank - Ready", "Idle - Ready"] and not feedback_text.startswith("Buffering"):
+        if not calibration_active and feedback_text and feedback_text not in ["No pose detected", "Ready", "Stand straight - Ready", "High Plank - Ready", "Idle - Ready"] and not feedback_text.startswith("Buffering"):
             speak_feedback(feedback_text)
 
         # --- Draw UI ---
         mode_name = MODES[current_mode][0]
         exercise_name = EXERCISES[current_exercise]
-        frame = draw_ui_panel(frame, engine_result, mode_name, exercise_name, fps)
+        frame = draw_live_hud(frame, engine_result, mode_name, exercise_name, fps, is_recording=is_recording)
+
+        # --- Video Writing ---
+        if is_recording and video_writer is not None:
+            video_writer.write(frame)
 
         cv2.imshow('AI Exercise Tracker', frame)
 
@@ -296,10 +243,47 @@ def main():
             engine.reset()
             print("[INFO] Counter reset.")
 
+        elif key_char == 'm':
+            toggle_speech_mute()
+
+        elif key_char == 's':
+            if not is_recording:
+                os.makedirs("results", exist_ok=True)
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                record_path = f"results/live_record_{timestamp}.mp4"
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(record_path, fourcc, 20.0, (w, h))
+                if video_writer.isOpened():
+                    is_recording = True
+                    print(f"[INFO] เริ่มบันทึกวิดีโอผลลัพธ์... ➡️ {record_path}")
+                    speak_feedback("เริ่มบันทึกวิดีโอ")
+                else:
+                    print("⚠️ [ERROR] ไม่สามารถตั้งค่า VideoWriter ได้")
+                    video_writer = None
+            else:
+                is_recording = False
+                if video_writer is not None:
+                    video_writer.release()
+                    video_writer = None
+                print("[INFO] สิ้นสุดการบันทึกวิดีโอ")
+                speak_feedback("บันทึกวิดีโอสำเร็จแล้วค่ะ")
+
+        elif key_char == 'k':
+            if current_mode != 'a':
+                print("⚠️ [WARNING] การปรับแต่งเกณฑ์ (Calibration) รองรับเฉพาะโหมดเรขาคณิต (Geometry) เท่านั้น")
+                speak_feedback("การปรับแต่งเกณฑ์ รองรับเฉพาะโหมดเรขาคณิตเท่านั้นค่ะ")
+            else:
+                calibration_active = True
+                calibration_start_time = time.time()
+                calibration_angles = []
+                print("[INFO] เริ่มการปรับแต่งเกณฑ์ (Calibration)...")
+                speak_feedback("เริ่มปรับแต่งเกณฑ์ กรุณายืนตรงแล้วย่อตัวทำท่าหนึ่งครั้งค่ะ")
+
         elif key_char in EXERCISES:
             selected_exercise = EXERCISES[key_char]
-            # บันทึกแดชบอร์ดสถิติของท่าเดิมก่อนเปลี่ยน
+            # บันทึกแดชบอร์ดสถิติและ CSV ของท่าเดิมก่อนเปลี่ยน
             analytics.generate_dashboard()
+            analytics.export_to_csv()
 
             # ท่า Push-up จะทำงานบน Mode A (Geometry) เท่านั้น เนื่องจากไม่มีอยู่ในโมเดล LSTM 4 คลาส
             if selected_exercise == 'Pushup' and current_mode == 'c':
@@ -323,8 +307,12 @@ def main():
                 print(f"[INFO] Mode changed to: {MODES[current_mode][0]}")
 
     # Cleanup
+    if video_writer is not None:
+        video_writer.release()
+
     print("\n  ⌛ กำลังคำนวณและแสดงกราฟสรุปสถิติออกกำลังกาย...")
     analytics.generate_dashboard()
+    analytics.export_to_csv()
 
     # หยุดการทำงานของเสียงแจ้งเตือน
     try:

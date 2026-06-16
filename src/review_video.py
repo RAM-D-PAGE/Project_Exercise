@@ -55,14 +55,16 @@ try:
     from src.engines.geometry_engine import GeometryEngine
     from src.engines.lstm_engine import LSTMEngine
     from src.utils.geometry import calculate_angle
-    from src.utils.speech_layer import speak_feedback, get_speech_assistant
+    from src.utils.speech_layer import speak_feedback, get_speech_assistant, toggle_speech_mute
     from src.utils.analytics import WorkoutAnalytics
+    from src.utils.ui_utils import draw_review_hud
 except ImportError:
     from engines.geometry_engine import GeometryEngine
     from engines.lstm_engine import LSTMEngine
     from utils.geometry import calculate_angle
-    from utils.speech_layer import speak_feedback, get_speech_assistant
+    from utils.speech_layer import speak_feedback, get_speech_assistant, toggle_speech_mute
     from utils.analytics import WorkoutAnalytics
+    from utils.ui_utils import draw_review_hud
 
 
 # ============================================================
@@ -217,164 +219,7 @@ def create_engine(mode_key, exercise_name):
         return GeometryEngine(exercise_name)
 
 
-# ============================================================
-# DRAWING / HUD
-# ============================================================
-
-def draw_progress_bar(frame, current_frame, total_frames, y_pos):
-    """วาด progress bar แสดงตำแหน่ง frame ปัจจุบัน"""
-    h, w, _ = frame.shape
-    bar_x = 15
-    bar_w = w - 30
-    bar_h = 24
-
-    # Background
-    cv2.rectangle(frame, (bar_x, y_pos), (bar_x + bar_w, y_pos + bar_h), (50, 50, 50), -1)
-
-    # Fill
-    if total_frames > 0:
-        fill_w = int(bar_w * (current_frame / total_frames))
-        cv2.rectangle(frame, (bar_x, y_pos), (bar_x + fill_w, y_pos + bar_h), (0, 200, 255), -1)
-
-    # Border
-    cv2.rectangle(frame, (bar_x, y_pos), (bar_x + bar_w, y_pos + bar_h), (100, 100, 100), 1)
-
-    # Percentage text
-    if total_frames > 0:
-        pct = current_frame / total_frames * 100
-        cv2.putText(frame, f"{pct:.0f}%", (bar_x + bar_w - 65, y_pos + bar_h - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-
-def draw_thai_text(img, text, position, font_size=20, color=(255, 255, 255)):
-    """
-    วาดข้อความภาษาไทย/อังกฤษ ลงบนภาพ OpenCV (numpy array) โดยใช้ Pillow และจัดลำดับการโหลดฟอนต์
-    """
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(img_rgb)
-        draw = ImageDraw.Draw(pil_img)
-        
-        font_paths = [
-            # 1. Local Font ในโครงการ
-            os.path.join(os.path.dirname(__file__), "utils", "Sarabun-Regular.ttf"),
-            # 2. ค้นหาชื่อฟอนต์โดยตรง (PIL จะค้นหาใน System Font Directory)
-            "tahoma",
-            "LeelawUI",
-            "arial",
-            # 3. Path มาตรฐานบน Windows
-            "C:\\Windows\\Fonts\\tahoma.ttf",
-            "C:\\Windows\\Fonts\\LeelawUI.ttf",
-            "C:\\Windows\\Fonts\\arial.ttf"
-        ]
-        font = None
-        for path in font_paths:
-            try:
-                font = ImageFont.truetype(path, font_size)
-                break
-            except:
-                continue
-                
-        if font is None:
-            font = ImageFont.load_default()
-            
-        rgb_color = (color[2], color[1], color[0])
-        draw.text(position, text, font=font, fill=rgb_color)
-        return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-    except Exception as e:
-        import traceback
-        print(f"  ⚠️ [draw_thai_text ERROR]: {e}")
-        traceback.print_exc()
-        # Fallback กรณีดึง PIL ไม่ได้
-        cv2.putText(img, text, (position[0], position[1] + font_size), 
-                    cv2.FONT_HERSHEY_SIMPLEX, font_size/32.0, color, 2, cv2.LINE_AA)
-        return img
-
-def draw_hud(frame, engine_result, mode_name, exercise_display, current_frame,
-             total_frames, video_fps, speed, is_paused):
-    """วาด HUD (Heads-Up Display) ทั้งหมดบน frame — ขนาดใหญ่อ่านง่าย"""
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-
-    # ─── TOP PANEL ───
-    panel_h = 160
-    cv2.rectangle(overlay, (0, 0), (w, panel_h), (15, 15, 15), -1)
-    cv2.addWeighted(overlay, 0.82, frame, 0.18, 0, frame)
-
-    # Row 1: Mode & Exercise
-    cv2.putText(frame, f"Mode: {mode_name}", (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
-    cv2.putText(frame, f"Exercise: {exercise_display}", (20, 80),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 200), 2)
-
-    # Row 2: Frame info & speed
-    status_icon = "II PAUSED" if is_paused else ">> PLAYING"
-    status_clr = (0, 180, 255) if is_paused else (0, 255, 100)
-    cv2.putText(frame, f"Frame: {current_frame}/{total_frames}", (20, 118),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
-    cv2.putText(frame, f"FPS: {video_fps:.0f}  Speed: {speed:.2f}x", (20, 150),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (180, 180, 180), 2)
-
-    # Status (right side)
-    text_size = cv2.getTextSize(status_icon, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
-    cv2.putText(frame, status_icon, (w - text_size[0] - 20, 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.2, status_clr, 3)
-
-    # Confidence + Predicted class (for LSTM mode, right side)
-    if 'confidence' in engine_result:
-        conf = engine_result['confidence']
-        conf_color = (0, 255, 0) if conf > 0.7 else (0, 255, 255) if conf > 0.4 else (0, 0, 255)
-        cv2.putText(frame, f"Confidence: {conf:.0%}", (w - 360, 95),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, conf_color, 2)
-    if 'predicted_class' in engine_result:
-        cv2.putText(frame, f"Predicted: {engine_result['predicted_class']}", (w - 360, 135),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 200, 100), 2)
-
-    # ─── PROGRESS BAR ───
-    draw_progress_bar(frame, current_frame, total_frames, panel_h + 5)
-
-    # ─── BOTTOM PANEL ───
-    bottom_h = 150
-    panel_y = h - bottom_h
-    overlay2 = frame.copy()
-    cv2.rectangle(overlay2, (0, panel_y), (w, h), (15, 15, 15), -1)
-    cv2.addWeighted(overlay2, 0.82, frame, 0.18, 0, frame)
-
-    # Rep Count
-    count = engine_result.get('count', 0)
-    cv2.putText(frame, f"REPS: {count}", (20, panel_y + 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 255, 255), 3)
-
-    # Feedback (รองรับการแสดงผลภาษาไทยด้วย Pillow)
-    feedback = engine_result.get('feedback', '')
-    status_color = engine_result.get('status_color', (255, 255, 255))
-    frame = draw_thai_text(frame, feedback, (20, panel_y + 70), font_size=32, color=status_color)
-
-    # Debug angle (Geometry mode)
-    if 'debug_angle' in engine_result:
-        cv2.putText(frame, f"Angle: {engine_result['debug_angle']}", (w - 350, panel_y + 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2)
-
-    # Phase indicator
-    phase = engine_result.get('phase', 0)
-    phase_x = w - 350
-    cv2.putText(frame, "Phase:", (phase_x, panel_y + 98),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.85, (180, 180, 180), 2)
-    for i in range(4):
-        cx = phase_x + 95 + i * 42
-        cy = panel_y + 92
-        color = (0, 255, 0) if i <= phase else (60, 60, 60)
-        cv2.circle(frame, (cx, cy), 15, color, -1)
-        cv2.circle(frame, (cx, cy), 15, (100, 100, 100), 1)
-
-    # ─── KEY HINTS (very bottom) ───
-    hints = "[Space]=Play/Pause  [A/D]=Frame  [+/-]=Speed  [1]=GeoMode  [2]=LSTM  [R]=Reset  [Q]=Quit"
-    cv2.putText(frame, hints, (15, panel_y + 138),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (140, 140, 140), 2)
-
-    return frame
+# Drawing utilities imported from src/utils/ui_utils.py
 
 
 # ============================================================
@@ -429,6 +274,8 @@ def review_video(video_path, exercise_info, initial_mode):
     current_speed = SPEED_OPTIONS[speed_idx]
     current_frame_idx = 0
     last_logged_frame_idx = -1
+    is_recording = False
+    video_writer = None
 
     # สำหรับเก็บ frame cache (ใช้สำหรับ backward seek)
     # เก็บเฉพาะ frame ปัจจุบัน (backward ใช้ cap.set)
@@ -513,7 +360,9 @@ def review_video(video_path, exercise_info, initial_mode):
             rep_count = engine_result.get('count', 0)
             phase = engine_result.get('phase', 0)
             status_color = engine_result.get('status_color', (255, 255, 255))
-            analytics.log_frame(current_frame_idx, angle, rep_count, phase, status_color)
+            confidence = engine_result.get('confidence', None)
+            predicted_class = engine_result.get('predicted_class', None)
+            analytics.log_frame(current_frame_idx, angle, rep_count, phase, status_color, confidence, predicted_class)
             last_logged_frame_idx = current_frame_idx
 
             # Asynchronous voice feedback (เฉพาะเมื่อไม่ได้ Pause)
@@ -530,21 +379,29 @@ def review_video(video_path, exercise_info, initial_mode):
 
         # --- Draw Skeleton on the resized display_frame (for consistent thickness) ---
         if results.pose_landmarks:
+            is_buffering = (engine_result.get('predicted_class') == 'Buffering')
+            skeleton_color = (0, 140, 255) if is_buffering else (0, 255, 0)
+            connection_color = (0, 100, 200) if is_buffering else (0, 200, 0)
             mp_drawing.draw_landmarks(
                 display_frame,
                 results.pose_landmarks,
                 mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=3, circle_radius=4),
-                connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=3)
+                landmark_drawing_spec=mp_drawing.DrawingSpec(color=skeleton_color, thickness=3, circle_radius=4),
+                connection_drawing_spec=mp_drawing.DrawingSpec(color=connection_color, thickness=3)
             )
 
         # --- Draw HUD (วาดบน display_frame ขนาดคงที่ 1280x720) ---
-        display_frame = draw_hud(
+        display_frame = draw_review_hud(
             display_frame, engine_result,
             current_mode_name, exercise_display,
             current_frame_idx, total_frames,
-            video_fps, current_speed, is_paused
+            video_fps, current_speed, is_paused,
+            is_recording=is_recording
         )
+
+        # --- Video Writing ---
+        if is_recording and video_writer is not None:
+            video_writer.write(display_frame)
 
         cv2.imshow(window_name, display_frame)
 
@@ -561,6 +418,31 @@ def review_video(video_path, exercise_info, initial_mode):
         if key == ord('q') or key == 27:  # Q or ESC
             print("\n  ⏹ ออกจากรีวิว")
             break
+
+        elif key == ord('s') or key == ord('S'):  # S = Start/Stop Recording
+            if not is_recording:
+                os.makedirs("results", exist_ok=True)
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                record_path = f"results/review_record_{timestamp}.mp4"
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(record_path, fourcc, video_fps, (DISPLAY_W, DISPLAY_H))
+                if video_writer.isOpened():
+                    is_recording = True
+                    print(f"  🔴 [INFO] เริ่มบันทึกวิดีโอผลลัพธ์... ➡️ {record_path}")
+                    speak_feedback("เริ่มบันทึกวิดีโอ")
+                else:
+                    print("  ⚠️ [ERROR] ไม่สามารถตั้งค่า VideoWriter ได้")
+                    video_writer = None
+            else:
+                is_recording = False
+                if video_writer is not None:
+                    video_writer.release()
+                    video_writer = None
+                print("  [INFO] สิ้นสุดการบันทึกวิดีโอ")
+                speak_feedback("บันทึกวิดีโอสำเร็จแล้วค่ะ")
+
+        elif key == ord('m') or key == ord('M'):  # M = Mute Toggle
+            toggle_speech_mute()
 
         elif key == ord(' '):  # Space = toggle pause
             is_paused = not is_paused
@@ -634,6 +516,8 @@ def review_video(video_path, exercise_info, initial_mode):
             print("  🔄 Reset! กลับ frame 0 (Paused)")
 
     # --- Cleanup ---
+    if video_writer is not None:
+        video_writer.release()
     cap.release()
     cv2.destroyAllWindows()
     pose.close()
@@ -641,6 +525,7 @@ def review_video(video_path, exercise_info, initial_mode):
     # --- บันทึกสถิติและเปิด Dashboard ---
     print("\n  ⌛ กำลังคำนวณและแสดงกราฟสรุปสถิติออกกำลังกาย...")
     analytics.generate_dashboard()
+    analytics.export_to_csv()
 
     # หยุดการทำงานของเสียงแจ้งเตือน
     try:

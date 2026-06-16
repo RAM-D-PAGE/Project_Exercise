@@ -74,26 +74,22 @@ class LSTMEngine(ExerciseEngine):
         แปลง MediaPipe landmarks เป็น Feature vector ขนาด 134
         ให้ตรงกับรูปแบบที่ train_model.py ใช้เทรน
         """
-        lm_list = [[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks]
-
-        features = []
-        for lm in lm_list:
-            features.extend(lm)  # x, y, z, visibility × 33 = 132
+        lm_arr = np.array([[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks], dtype=np.float32)
+        features = lm_arr.flatten()  # 33 × 4 = 132 elements
 
         # Engineered Features: Knee angles (ตรงกับ collect_data.py)
         l_knee_angle = calculate_angle(
-            [lm_list[23][0], lm_list[23][1]],
-            [lm_list[25][0], lm_list[25][1]],
-            [lm_list[27][0], lm_list[27][1]]
+            [lm_arr[23, 0], lm_arr[23, 1]],
+            [lm_arr[25, 0], lm_arr[25, 1]],
+            [lm_arr[27, 0], lm_arr[27, 1]]
         )
         r_knee_angle = calculate_angle(
-            [lm_list[24][0], lm_list[24][1]],
-            [lm_list[26][0], lm_list[26][1]],
-            [lm_list[28][0], lm_list[28][1]]
+            [lm_arr[24, 0], lm_arr[24, 1]],
+            [lm_arr[26, 0], lm_arr[26, 1]],
+            [lm_arr[28, 0], lm_arr[28, 1]]
         )
-        features.extend([l_knee_angle, r_knee_angle])
 
-        return np.array(features, dtype=np.float32)
+        return np.append(features, [l_knee_angle, r_knee_angle]).astype(np.float32)
 
     def process(self, landmarks, frame_size):
         """

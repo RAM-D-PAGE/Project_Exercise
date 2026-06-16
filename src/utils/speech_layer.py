@@ -4,6 +4,15 @@ import threading
 import queue
 import time
 import os
+import sys
+
+# Configure stdout for UTF-8 Emojis on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 
 class SpeechAssistant:
     def __init__(self, cooldown_seconds=4.0):
@@ -13,6 +22,7 @@ class SpeechAssistant:
         self.speech_queue = queue.Queue()
         self.worker_thread = None
         self.running = False
+        self.muted = False
         self.lock = threading.Lock()
         
         # เริ่มต้น worker thread
@@ -81,7 +91,7 @@ class SpeechAssistant:
 
     def speak(self, text):
         """ส่งข้อความพูด โดยเช็ค Cooldown ป้องกันเสียงพูดซ้อน"""
-        if not text or not self.running:
+        if not text or not self.running or self.muted:
             return
         
         # ตัดแท็กพิเศษ เช่น [!], [แนะนำ] ออก เพื่อให้อ่านออกเสียงเฉพาะคำพูดภาษาไทยสะอาดๆ
@@ -122,4 +132,32 @@ def speak_feedback(text):
         assistant = get_speech_assistant()
         assistant.speak(text)
     except Exception as e:
-        print(f"  ⚠️ [speak_feedback error]: {e}")
+        try:
+            print(f"  ⚠️ [speak_feedback error]: {e}")
+        except UnicodeEncodeError:
+            print(f"  [speak_feedback error]: {e}")
+
+def toggle_speech_mute():
+    """สลับสถานะเปิด/ปิดเสียงพูดเตือน"""
+    try:
+        assistant = get_speech_assistant()
+        assistant.muted = not assistant.muted
+        status = "Muted (ปิดเสียงพูด)" if assistant.muted else "Unmuted (เปิดเสียงพูด)"
+        try:
+            print(f"  🔊 [SpeechAssistant] {status}")
+        except UnicodeEncodeError:
+            print(f"  [SpeechAssistant] {status}")
+        return assistant.muted
+    except Exception as e:
+        try:
+            print(f"  ⚠️ [toggle_speech_mute error]: {e}")
+        except UnicodeEncodeError:
+            print(f"  [toggle_speech_mute error]: {e}")
+        return False
+
+def is_speech_muted():
+    """เช็คสถานะว่าเปิด/ปิดเสียงอยู่หรือไม่"""
+    try:
+        return get_speech_assistant().muted
+    except:
+        return False

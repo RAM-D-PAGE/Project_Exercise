@@ -22,7 +22,7 @@ class WorkoutAnalytics:
         self.last_rep_count = 0
         self.rep_was_incorrect = False  # ตัวแปรจำว่าใน rep ปัจจุบัน มีทำท่าผิดฟอร์มไหม
 
-    def log_frame(self, frame_idx, angle, rep_count, phase, status_color):
+    def log_frame(self, frame_idx, angle, rep_count, phase, status_color, confidence=None, predicted_class=None):
         """บันทึกข้อมูลในเฟรมนั้นๆ เพื่อไปทำกราฟสรุป"""
         # ระบุสถานะความถูกต้องจากสีของ HUD
         # status_color: (B, G, R) ของ OpenCV
@@ -38,7 +38,9 @@ class WorkoutAnalytics:
             'frame_idx': frame_idx,
             'angle': angle,
             'rep_count': rep_count,
-            'state': state
+            'state': state,
+            'confidence': confidence if confidence is not None else 0.0,
+            'predicted_class': predicted_class if predicted_class is not None else ''
         })
 
         # คอนโทรลเรื่องการจับเวลาของแต่ละ Rep ด้วยการนับเฟรม
@@ -217,3 +219,42 @@ class WorkoutAnalytics:
             print(f"  ⚠️ ไม่สามารถเปิดแสดงผลรูปภาพอัตโนมัติ: {e}")
             
         return filepath
+
+    def export_to_csv(self, output_dir="results"):
+        """บันทึกข้อมูลดิบรายเฟรมลงไฟล์ CSV ในโฟลเดอร์ที่กำหนด"""
+        if not self.frames:
+            print("  ⚠️ [Analytics] No data logged to export CSV.")
+            return None
+
+        # สร้างโฟลเดอร์สำหรับผลลัพธ์หากยังไม่มี
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        import csv
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"raw_data_{self.exercise_name}_{timestamp}.csv"
+        filepath = os.path.join(output_dir, filename)
+
+        try:
+            with open(filepath, mode='w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                # Write header
+                writer.writerow(['frame_idx', 'angle', 'rep_count', 'state', 'confidence', 'predicted_class'])
+                # Write rows
+                for r in self.frames:
+                    writer.writerow([
+                        r['frame_idx'],
+                        r['angle'],
+                        r['rep_count'],
+                        r['state'],
+                        r['confidence'],
+                        r['predicted_class']
+                    ])
+            
+            print(f"  📝 [Analytics] เซฟข้อมูลดิบลง CSV สำเร็จ:")
+            print(f"     ➡️ {os.path.abspath(filepath)}")
+            return filepath
+        except Exception as e:
+            print(f"  ⚠️ [Analytics] ไม่สามารถบันทึกข้อมูล CSV: {e}")
+            return None
+
