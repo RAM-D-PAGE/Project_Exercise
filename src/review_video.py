@@ -55,13 +55,16 @@ try:
     from src.engines.geometry_engine import GeometryEngine
     from src.engines.lstm_engine import LSTMEngine
     from src.utils.geometry import calculate_angle
+    from src.utils.speech_layer import speak_feedback, get_speech_assistant
+    from src.utils.analytics import WorkoutAnalytics
 except ImportError:
     from engines.geometry_engine import GeometryEngine
     from engines.lstm_engine import LSTMEngine
     from utils.geometry import calculate_angle
+    from utils.speech_layer import speak_feedback, get_speech_assistant
+    from utils.analytics import WorkoutAnalytics
 
-# ============================================================
-# CONFIGURATION
+
 # ============================================================
 
 EXERCISE_OPTIONS = {
@@ -417,11 +420,15 @@ def review_video(video_path, exercise_info, initial_mode):
     print(f"     Mode: {current_mode_name}  |  Exercise: {exercise_display}")
     print(f"\n  ⏯ เริ่มเล่น! (กด Space เพื่อ Pause)\n")
 
+    # Initialize analytics
+    analytics = WorkoutAnalytics(exercise_name, fps=video_fps)
+
     # State
     is_paused = False
     speed_idx = DEFAULT_SPEED_IDX
     current_speed = SPEED_OPTIONS[speed_idx]
     current_frame_idx = 0
+    last_logged_frame_idx = -1
 
     # สำหรับเก็บ frame cache (ใช้สำหรับ backward seek)
     # เก็บเฉพาะ frame ปัจจุบัน (backward ใช้ cap.set)
@@ -499,6 +506,22 @@ def review_video(video_path, exercise_info, initial_mode):
                 engine.reset_active_state()
 
         stats['max_reps'] = max(stats['max_reps'], engine_result.get('count', 0))
+
+        # --- Log frame & Voice Feedback (บันทึกสถิติและเสียงพูดเฉพาะเมื่อเฟรมใหม่ขยับ) ---
+        if current_frame_idx != last_logged_frame_idx:
+            angle = engine_result.get('debug_angle', 0.0)
+            rep_count = engine_result.get('count', 0)
+            phase = engine_result.get('phase', 0)
+            status_color = engine_result.get('status_color', (255, 255, 255))
+            analytics.log_frame(current_frame_idx, angle, rep_count, phase, status_color)
+            last_logged_frame_idx = current_frame_idx
+
+            # Asynchronous voice feedback (เฉพาะเมื่อไม่ได้ Pause)
+            if not is_paused:
+                feedback_text = engine_result.get('feedback', '')
+                if feedback_text and feedback_text not in ["No pose detected", "Ready", "Stand straight - Ready", "High Plank - Ready", "Idle - Ready"] and not feedback_text.startswith("Buffering"):
+                    speak_feedback(feedback_text)
+
 
         # --- Resize to 1280x720 FIRST (ก่อนวาด HUD และ Skeleton) ---
         DISPLAY_W, DISPLAY_H = 1280, 720
@@ -606,12 +629,24 @@ def review_video(video_path, exercise_info, initial_mode):
                 'max_reps': 0, 'low_confidence_frames': 0,
                 'mode_switches': stats['mode_switches'],
             }
+            analytics = WorkoutAnalytics(exercise_name, fps=video_fps)
+            last_logged_frame_idx = -1
             print("  🔄 Reset! กลับ frame 0 (Paused)")
 
     # --- Cleanup ---
     cap.release()
     cv2.destroyAllWindows()
     pose.close()
+
+    # --- บันทึกสถิติและเปิด Dashboard ---
+    print("\n  ⌛ กำลังคำนวณและแสดงกราฟสรุปสถิติออกกำลังกาย...")
+    analytics.generate_dashboard()
+
+    # หยุดการทำงานของเสียงแจ้งเตือน
+    try:
+        get_speech_assistant().stop()
+    except:
+        pass
 
     # --- สรุปผล ---
     print_summary(video_path, exercise_display, stats, engine)

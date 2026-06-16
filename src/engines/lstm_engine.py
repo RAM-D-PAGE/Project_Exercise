@@ -108,7 +108,8 @@ class LSTMEngine(ExerciseEngine):
                 "feedback": "Model not loaded! Run train_model.py first.",
                 "status_color": (0, 0, 255),
                 "predicted_class": "N/A",
-                "confidence": 0.0
+                "confidence": 0.0,
+                "debug_angle": 0.0
             }
 
         # 1. แปลง Landmarks เป็น Feature vector
@@ -123,7 +124,8 @@ class LSTMEngine(ExerciseEngine):
                 "feedback": f"Buffering... ({len(self.frame_buffer)}/{self.time_steps})",
                 "status_color": (255, 165, 0),
                 "predicted_class": "Buffering",
-                "confidence": 0.0
+                "confidence": 0.0,
+                "debug_angle": 0.0
             }
 
         # 3. สร้าง Input Tensor จาก Sliding Window
@@ -152,13 +154,39 @@ class LSTMEngine(ExerciseEngine):
         else:
             status_color = (0, 0, 255)  # Red (Incorrect form)
 
+        # คำนวณมุมสำหรับการรายงานสถิติ
+        lm_list = [[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks]
+        angle = 0.0
+        try:
+            if "Squat" in self.exercise_name:
+                angle = calculate_angle(
+                    [lm_list[23][0], lm_list[23][1]],
+                    [lm_list[25][0], lm_list[25][1]],
+                    [lm_list[27][0], lm_list[27][1]]
+                )
+            elif "Jumping" in self.exercise_name or "Jack" in self.exercise_name:
+                angle = calculate_angle(
+                    [lm_list[24][0], lm_list[24][1]],
+                    [lm_list[12][0], lm_list[12][1]],
+                    [lm_list[16][0], lm_list[16][1]]
+                )
+            elif "Pushup" in self.exercise_name:
+                angle = calculate_angle(
+                    [lm_list[12][0], lm_list[12][1]],
+                    [lm_list[14][0], lm_list[14][1]],
+                    [lm_list[16][0], lm_list[16][1]]
+                )
+        except Exception:
+            pass
+
         return {
             "count": self.reps_count,
             "phase": self.current_phase,
             "feedback": self.feedback,
             "status_color": status_color,
             "predicted_class": predicted_class_name,
-            "confidence": round(confidence, 3)
+            "confidence": round(confidence, 3),
+            "debug_angle": round(angle, 2)
         }
 
     def _update_rep_counter(self, predicted_class_id, confidence, landmarks):

@@ -25,11 +25,11 @@ except (ImportError, ModuleNotFoundError):
     except:
         print("ERROR: MediaPipe installation appears corrupted. Please run 'pip install mediapipe'")
         sys.exit(1)
-
 from src.engines.geometry_engine import GeometryEngine
 from src.engines.lstm_engine import LSTMEngine
+from src.utils.speech_layer import speak_feedback, get_speech_assistant
+from src.utils.analytics import WorkoutAnalytics
 
-# --- Configuration ---
 EXERCISES = {
     '1': 'Squat_Correct',
     '2': 'Pushup',
@@ -195,6 +195,8 @@ def main():
     current_mode = DEFAULT_MODE
     current_exercise = DEFAULT_EXERCISE
     engine = create_engine(current_mode, EXERCISES[current_exercise])
+    analytics = WorkoutAnalytics(EXERCISES[current_exercise], fps=30.0)
+    frame_idx = 0
 
     # MediaPipe Pose
     pose = mp_pose.Pose(
@@ -263,6 +265,19 @@ def main():
             if hasattr(engine, 'reset_active_state'):
                 engine.reset_active_state()
 
+        # --- Log frame & Voice Feedback ---
+        frame_idx += 1
+        angle = engine_result.get('debug_angle', 0.0)
+        rep_count = engine_result.get('count', 0)
+        phase = engine_result.get('phase', 0)
+        status_color = engine_result.get('status_color', (255, 255, 255))
+        analytics.log_frame(frame_idx, angle, rep_count, phase, status_color)
+
+        # Asynchronous voice feedback
+        feedback_text = engine_result.get('feedback', '')
+        if feedback_text and feedback_text not in ["No pose detected", "Ready", "Stand straight - Ready", "High Plank - Ready", "Idle - Ready"] and not feedback_text.startswith("Buffering"):
+            speak_feedback(feedback_text)
+
         # --- Draw UI ---
         mode_name = MODES[current_mode][0]
         exercise_name = EXERCISES[current_exercise]
@@ -283,6 +298,9 @@ def main():
 
         elif key_char in EXERCISES:
             selected_exercise = EXERCISES[key_char]
+            # บันทึกแดชบอร์ดสถิติของท่าเดิมก่อนเปลี่ยน
+            analytics.generate_dashboard()
+
             # ท่า Push-up จะทำงานบน Mode A (Geometry) เท่านั้น เนื่องจากไม่มีอยู่ในโมเดล LSTM 4 คลาส
             if selected_exercise == 'Pushup' and current_mode == 'c':
                 current_mode = 'a'
@@ -290,6 +308,8 @@ def main():
             
             current_exercise = key_char
             engine = create_engine(current_mode, selected_exercise)
+            analytics = WorkoutAnalytics(selected_exercise, fps=fps)
+            frame_idx = 0
             print(f"[INFO] Exercise changed to: {selected_exercise}")
 
         elif key_char in MODES:
@@ -303,6 +323,15 @@ def main():
                 print(f"[INFO] Mode changed to: {MODES[current_mode][0]}")
 
     # Cleanup
+    print("\n  ⌛ กำลังคำนวณและแสดงกราฟสรุปสถิติออกกำลังกาย...")
+    analytics.generate_dashboard()
+
+    # หยุดการทำงานของเสียงแจ้งเตือน
+    try:
+        get_speech_assistant().stop()
+    except:
+        pass
+
     cap.release()
     cv2.destroyAllWindows()
     pose.close()

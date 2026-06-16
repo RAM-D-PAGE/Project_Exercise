@@ -35,4 +35,5 @@ Thumbs.db
 *.avi
 *.mov
 models/
+results/
 
