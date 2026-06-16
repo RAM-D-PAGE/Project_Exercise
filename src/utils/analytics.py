@@ -91,12 +91,12 @@ class WorkoutAnalytics:
 
         # สร้างรูปภาพ Dashboard ขนาดใหญ่
         fig = plt.figure(figsize=(15, 10))
-        fig.suptitle(f"📊 รายงานวิเคราะห์สถิติการออกกำลังกาย: ท่า {self.exercise_name}", fontsize=18, fontweight='bold', y=0.96)
+        fig.suptitle(f"รายงานวิเคราะห์สถิติการออกกำลังกาย: ท่า {self.exercise_name}", fontsize=18, fontweight='bold', y=0.96)
         
         # ─── 1. TIMELINE OF ANGLE & POSTURE CORRECTNESS (ครึ่งบน) ───
         ax1 = plt.subplot2grid((2, 2), (0, 0), colspan=2)
         ax1.plot(frame_idxs, angles, color='#2c3e50', linewidth=2, label='Joint Angle (องศา)')
-        ax1.set_title('📈 ไทม์ไลน์มุมข้อต่อและสถานะความถูกต้องของท่าทาง', fontsize=13, fontweight='bold')
+        ax1.set_title('ไทม์ไลน์มุมข้อต่อและสถานะความถูกต้องของท่าทาง', fontsize=13, fontweight='bold')
         ax1.set_xlabel('เฟรม (Frame Index)', fontsize=10)
         ax1.set_ylabel('มุมข้อต่อ (องศา)', fontsize=10)
         ax1.grid(True, linestyle='--', alpha=0.5)
@@ -148,7 +148,7 @@ class WorkoutAnalytics:
             bars = ax2.bar(x_reps, self.rep_durations, color=colors, edgecolor='#7f8c8d', width=0.6)
             
             ax2.axhline(y=1.3, color='#c0392b', linestyle='--', linewidth=1.2, label='เกณฑ์ความเร็วขั้นต่ำ (1.3s)')
-            ax2.set_title('⏱️ การวิเคราะห์จังหวะความเร็วในแต่ละครั้ง (Tempo)', fontsize=13, fontweight='bold')
+            ax2.set_title('การวิเคราะห์จังหวะความเร็วในแต่ละครั้ง (Tempo)', fontsize=13, fontweight='bold')
             ax2.set_xlabel('ครั้งที่ทำ (Reps)', fontsize=10)
             ax2.set_ylabel('ระยะเวลา (วินาที)', fontsize=10)
             
@@ -164,7 +164,7 @@ class WorkoutAnalytics:
         else:
             ax2.text(0.5, 0.5, 'ไม่พบข้อมูลครั้งที่ทำเสร็จสมบูรณ์\n(ต้องนับได้อย่างน้อย 1 ครั้ง)', 
                      ha='center', va='center', fontsize=12, color='gray')
-            ax2.set_title('⏱️ การวิเคราะห์จังหวะความเร็วในแต่ละครั้ง (Tempo)', fontsize=13, fontweight='bold')
+            ax2.set_title('การวิเคราะห์จังหวะความเร็วในแต่ละครั้ง (Tempo)', fontsize=13, fontweight='bold')
 
         # ─── 3. POSTURE QUALITY DISTRIBUTION (ล่างขวา) ───
         ax3 = plt.subplot2grid((2, 2), (1, 1))
@@ -190,7 +190,7 @@ class WorkoutAnalytics:
             ax3.pie(filtered_sizes, labels=filtered_labels, colors=filtered_colors,
                     autopct='%1.1f%%', startangle=90, textprops={'fontsize': 11},
                     wedgeprops={'edgecolor': 'white', 'linewidth': 1.5, 'antialiased': True})
-            ax3.set_title('🍕 สัดส่วนคุณภาพของสรีระตลอดช่วงเวลา (Posture Quality)', fontsize=13, fontweight='bold')
+            ax3.set_title('สัดส่วนคุณภาพของสรีระตลอดช่วงเวลา (Posture Quality)', fontsize=13, fontweight='bold')
         else:
             ax3.text(0.5, 0.5, 'ไม่มีข้อมูลสำหรับแสดงสัดส่วน', ha='center', va='center')
 
