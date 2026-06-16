@@ -150,17 +150,27 @@ class GeometryEngine(ExerciseEngine):
                 self.current_phase = 3
                 self.feedback = "Push up!"
 
+        # ตรวจจับมุมมองด้านข้าง (Side/Profile View) สำหรับท่าวิดพื้น
+        d_shoulders = abs(landmarks[11][0] - landmarks[12][0])
+        torso_len = (np.hypot(landmarks[11][0] - landmarks[23][0], landmarks[11][1] - landmarks[23][1]) +
+                     np.hypot(landmarks[12][0] - landmarks[24][0], landmarks[12][1] - landmarks[24][1])) / 2
+        is_side_view = (d_shoulders / torso_len < 0.35) if torso_len > 0 else False
+
         # ค้นหาข้อผิดพลาดของหลังและสะโพกขณะทำวิดพื้น (Phase 1, 2, 3)
         if self.current_phase in [1, 2, 3]:
-            if avg_hip_angle < 150:
-                self.feedback = "[!] สะโพกสูงเกินไป! ลดสะโพกและก้นลงต่ำลง"
-                status_color = (0, 0, 255)
-            elif avg_hip_angle > 195:
-                self.feedback = "[!] สะโพกแอ่น/ตก! เกร็งหน้าท้องรักษาแนวตรง"
-                status_color = (0, 0, 255)
-            elif self.current_phase == 1 and angle > 120:
-                self.feedback = "[!] ย่อตัวลงลึกอีกนิด ให้หน้าอกใกล้พื้นอีกหน่อย"
-                status_color = (0, 0, 255)
+            if not is_side_view:
+                self.feedback = "[แนะนำ] หันข้างให้กล้อง เพื่อตรวจเช็คหลังและสะโพก"
+                status_color = (0, 165, 255) # Orange warning
+            else:
+                if avg_hip_angle < 150:
+                    self.feedback = "[!] สะโพกสูงเกินไป! ลดสะโพกและก้นลงต่ำลง"
+                    status_color = (0, 0, 255)
+                elif avg_hip_angle > 195:
+                    self.feedback = "[!] สะโพกแอ่น/ตก! เกร็งหน้าท้องรักษาแนวตรง"
+                    status_color = (0, 0, 255)
+                elif self.current_phase == 1 and angle > 120:
+                    self.feedback = "[!] ย่อตัวลงลึกอีกนิด ให้หน้าอกใกล้พื้นอีกหน่อย"
+                    status_color = (0, 0, 255)
 
         return {
             "count": self.reps_count,
