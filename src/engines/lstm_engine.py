@@ -150,9 +150,13 @@ class LSTMEngine(ExerciseEngine):
         if predicted_class_id == 0:
             status_color = (200, 200, 200)  # Gray (Idle)
         elif predicted_class_id in REP_COUNTING_CLASSES:
-            status_color = (0, 255, 0)  # Green (Correct form)
+            if getattr(self, 'is_geom_incorrect', False):
+                status_color = (0, 0, 255)  # Red (Incorrect form detected by geometry)
+            else:
+                status_color = (0, 255, 0)  # Green (Correct form)
         else:
-            status_color = (0, 0, 255)  # Red (Incorrect form)
+            status_color = (0, 0, 255)  # Red (Incorrect form classified by Bi-LSTM)
+
 
         # คำนวณมุมสำหรับการรายงานสถิติ
         lm_list = [[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks]
@@ -199,6 +203,7 @@ class LSTMEngine(ExerciseEngine):
         import time
         CONFIDENCE_THRESHOLD = 0.6
         lm_list = [[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks]
+        self.is_geom_incorrect = False
 
         if confidence < CONFIDENCE_THRESHOLD:
             self.feedback = f"Low confidence ({confidence:.0%})"
@@ -224,8 +229,10 @@ class LSTMEngine(ExerciseEngine):
                         ratio = d_ankles / d_shoulders
                         if ratio < 0.8:
                             self.feedback = "[แนะนำ] ยืดอกขึ้น และขยับเท้ากว้างขึ้นเล็กน้อย"
+                            self.is_geom_incorrect = True
                         elif ratio > 1.6:
                             self.feedback = "[แนะนำ] ยืนเท้ากว้างเกินไป ขยับเท้าชิดขึ้นหน่อย"
+                            self.is_geom_incorrect = True
                         else:
                             self.feedback = "ท่าทางและตำแหน่งเท้าดีมาก ย่อตัวลงลึกไว้"
                 elif predicted_class_id == 3:  # Jumping_Jack
@@ -236,8 +243,10 @@ class LSTMEngine(ExerciseEngine):
                     
                     if d_shoulders > 0 and d_ankles / d_shoulders < 1.1:
                         self.feedback = "[แนะนำ] กระโดดแยกขาให้กว้างขึ้นสัมพันธ์กับจังหวะยกมือ"
+                        self.is_geom_incorrect = True
                     elif arm_angle < 135:
                         self.feedback = "[แนะนำ] ยกมือชูขึ้นให้สูงขึ้นระดับเหนือศีรษะ"
+                        self.is_geom_incorrect = True
                     else:
                         self.feedback = "กางแขนและแยกขาได้จังหวะสวยงาม"
 
