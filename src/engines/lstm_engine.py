@@ -22,12 +22,11 @@ except ImportError:
 CLASS_NAMES = {
     0: 'Idle',
     1: 'Squat_Correct',
-    2: 'Squat_Incorrect',
-    3: 'Jumping_Jack'
+    2: 'Jumping_Jack'
 }
 
 # Exercise classes ที่ต้องนับ Rep (ไม่รวม Idle และ Incorrect)
-REP_COUNTING_CLASSES = {1, 3}  # Squat_Correct, Jumping_Jack
+REP_COUNTING_CLASSES = {1, 2}  # Squat_Correct, Jumping_Jack
 
 
 class LSTMEngine(ExerciseEngine):
@@ -239,7 +238,7 @@ class LSTMEngine(ExerciseEngine):
                                 self.is_geom_incorrect = True
                             else:
                                 self.feedback = "ท่าทางและตำแหน่งเท้าดีมาก ย่อตัวลงลึกไว้"
-                elif predicted_class_id == 3:  # Jumping_Jack
+                elif predicted_class_id == 2:  # Jumping_Jack
                     # เช็คระยะแยกขาเทียบไหล่ และความสูงของมือ
                     d_ankles = abs(lm_list[27][0] - lm_list[28][0])
                     d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
@@ -283,39 +282,10 @@ class LSTMEngine(ExerciseEngine):
             self.feedback = "Idle - Ready"
 
         else:
-            # Incorrect form detected (คลาส 2 หรือคลาสผิดฟอร์มอื่นๆ)
-            # ล้างสถานะ Active ทันที ป้องกันปัญหายังทำท่าผิดแต่ดันนับ
+            # Fallback ท่าทางผิดปกติ
             self.in_active_phase = False 
             self.current_phase = -1
-            
-            # วิเคราะห์เจาะลึกว่าผิดฟอร์มเรื่องอะไร
-            if predicted_class_id == 2:  # Squat_Incorrect
-                l_knee = calculate_angle([lm_list[23][0], lm_list[23][1]], [lm_list[25][0], lm_list[25][1]], [lm_list[27][0], lm_list[27][1]])
-                r_knee = calculate_angle([lm_list[24][0], lm_list[24][1]], [lm_list[26][0], lm_list[26][1]], [lm_list[28][0], lm_list[28][1]])
-                avg_knee = (l_knee + r_knee) / 2
-                
-                # เช็คระยะห่างเท้า
-                d_ankles = abs(lm_list[27][0] - lm_list[28][0])
-                d_shoulders = abs(lm_list[11][0] - lm_list[12][0])
-                ratio = d_ankles / d_shoulders if d_shoulders > 0 else 1.0
-                
-                # ตรวจจับมุมมองด้านข้าง (Side/Profile View)
-                torso_height = (abs(lm_list[11][1] - lm_list[23][1]) + abs(lm_list[12][1] - lm_list[24][1])) / 2
-                is_side_view = (d_shoulders / torso_height < 0.35) if torso_height > 0 else False
-                
-                if avg_knee > 140:
-                    self.feedback = "[!] ย่อตัวไม่สุด! พยายามย่อสะโพกลงให้ลึกขึ้นอีก"
-                elif is_side_view:
-                    self.feedback = "[!] ท่าทางผิดฟอร์ม! ยืดอก หลังตรง ไม่ก้มหน้า และย่อก้นลงให้ลึก"
-                else:
-                    if ratio < 0.8:
-                        self.feedback = "[!] ขาแคบเกินไป! ลุกขึ้นยืนแล้วขยับเท้ากว้างขึ้น"
-                    elif ratio > 1.7:
-                        self.feedback = "[!] ขากว้างเกินไป! ขยับเท้าชิดเข้ามาเล็กน้อย"
-                    else:
-                        self.feedback = "[!] ท่าทางผิดฟอร์ม! ยืดอก หลังตรง ไม่ก้มหน้า"
-            else:
-                self.feedback = f"[!] ท่าทางผิดปกติ: {CLASS_NAMES[predicted_class_id]}"
+            self.feedback = f"[!] ท่าทางผิดปกติ: {CLASS_NAMES.get(predicted_class_id, 'Unknown')}"
 
         self.prev_class = predicted_class_id
 

@@ -1,9 +1,17 @@
 import os
+import sys
+# Configure stdout to use UTF-8 to prevent encoding errors on Windows
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
+
 import glob
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
 from tensorflow.keras.utils import to_categorical
@@ -11,9 +19,11 @@ from tensorflow.keras.utils import to_categorical
 # --- Configuration ---
 DATA_DIR = "data/landmarks"
 MODEL_DIR = "models"
+REPORTS_DIR = "reports"
 TIME_STEPS = 15  # Window size (15 frames = ~0.75 seconds at 20 FPS)
 # อ้างอิง Classes ตาม collect_data.py
-NUM_CLASSES = 4  
+NUM_CLASSES = 3  
+LABEL_MAP = {0: 0, 1: 1, 3: 2} # Idle -> 0, Squat_Correct/Push-up -> 1, Jumping_Jack -> 2
 
 def load_and_preprocess_data():
     """Reads all CSVs and creates Time-Series Sequences."""
@@ -42,8 +52,10 @@ def load_and_preprocess_data():
             window = features[i:(i + TIME_STEPS)]
             label = labels[i + TIME_STEPS - 1] # ใช้ Label ของเฟรมสุดท้ายใน Window
             
-            X.append(window)
-            y.append(int(label))
+            label_val = int(label)
+            if label_val in LABEL_MAP:
+                X.append(window)
+                y.append(LABEL_MAP[label_val])
             
     X = np.array(X)
     y = to_categorical(np.array(y), num_classes=NUM_CLASSES)
@@ -96,7 +108,7 @@ class RealTimePlotCallback(tf.keras.callbacks.Callback):
             self.plt.pause(0.1)
         except Exception as e:
             self.has_gui = False
-            print(f"💡 (ระบบใช้การอัปเดตไฟล์กราฟเป็นแบบ Realtime บนดิสก์แทน เนื่องจากตรวจไม่พบสภาพแวดล้อมหน้าจอ GUI: {e})")
+            print(f"  [Info] (ระบบใช้การอัปเดตไฟล์กราฟเป็นแบบ Realtime บนดิสก์แทน เนื่องจากตรวจไม่พบสภาพแวดล้อมหน้าจอ GUI: {e})")
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -149,8 +161,71 @@ class RealTimePlotCallback(tf.keras.callbacks.Callback):
             pass
 
 
+def plot_confusion_matrix(cm, class_names, save_path):
+    """พล็อตและบันทึกรูปภาพ Confusion Matrix ให้สวยงาม"""
+    import matplotlib.pyplot as plt
+    import itertools
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+    
+    ax.set(xticks=np.arange(cm.shape[1]),
+           yticks=np.arange(cm.shape[0]),
+           xticklabels=class_names, yticklabels=class_names,
+           title="Confusion Matrix",
+           ylabel="True label",
+           xlabel="Predicted label")
+    
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    
+    fmt = 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        ax.text(j, i, format(cm[i, j], fmt),
+                ha="center", va="center",
+                color="white" if cm[i, j] > thresh else "black",
+                fontsize=12)
+        
+    fig.tight_layout()
+    plt.savefig(save_path, dpi=120)
+    plt.close(fig)
+
+
+def plot_roc_curve(y_test, y_pred, class_names, save_path):
+    """พล็อตและบันทึกรูปภาพ ROC Curve สำหรับ Multi-class Classification"""
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import roc_curve, auc
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    n_classes = y_test.shape[1]
+    for i in range(n_classes):
+        if len(np.unique(y_test[:, i])) > 1:
+            fpr, tpr, _ = roc_curve(y_test[:, i], y_pred[:, i])
+            roc_auc = auc(fpr, tpr)
+            ax.plot(fpr, tpr, label=f'ROC of {class_names[i]} (AUC = {roc_auc:.4f})', linewidth=2)
+            
+    ax.plot([0, 1], [0, 1], 'k--', label='Random Classifier (AUC = 0.5000)', linewidth=1.5)
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('False Positive Rate (FPR)')
+    ax.set_ylabel('True Positive Rate (TPR)')
+    ax.set_title('Receiver Operating Characteristic (ROC) Curve')
+    ax.legend(loc="lower right")
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    fig.tight_layout()
+    plt.savefig(save_path, dpi=120)
+    plt.close(fig)
+
+
 def main():
     os.makedirs(MODEL_DIR, exist_ok=True)
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     print("1. Loading and Preprocessing Data...")
     X, y = load_and_preprocess_data()
@@ -166,7 +241,7 @@ def main():
     model.summary()
     
     print("3. Training Model...")
-    history_img_path = os.path.join(MODEL_DIR, "training_history.png")
+    history_img_path = os.path.join(REPORTS_DIR, f"training_history_{timestamp}.png")
     
     # กำหนด Callbacks สำหรับเทรน
     early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
@@ -182,19 +257,86 @@ def main():
     
     # ประเมินผล
     loss, accuracy = model.evaluate(X_test, y_test)
-    print(f"\n  🎯 Test Loss: {loss:.4f}  |  Test Accuracy: {accuracy*100:.2f}%")
+    print(f"\n  [Test Result] Loss: {loss:.4f}  |  Accuracy: {accuracy*100:.2f}%")
     
-    # เปิดรูปภาพสรุปเมื่อเทรนเสร็จสมบูรณ์
+    # คำนวณ Confusion Matrix และ Classification Report
+    y_pred = model.predict(X_test)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    y_true_classes = np.argmax(y_test, axis=1)
+    
+    # ดึงรายชื่อ Class ตามที่กำหนดในระบบ
+    class_names = ['Idle', 'Squat_Correct/Push-up', 'Jumping_Jack']
+    if len(class_names) < NUM_CLASSES:
+        for i in range(len(class_names), NUM_CLASSES):
+            class_names.append(f"Class {i}")
+            
+    print("\n" + "=" * 25 + " Classification Report " + "=" * 25)
+    print(classification_report(y_true_classes, y_pred_classes, labels=np.arange(NUM_CLASSES), target_names=class_names[:NUM_CLASSES]))
+    print("=" * 73)
+    
+    print("\n[Confusion Matrix] Text:")
+    cm = confusion_matrix(y_true_classes, y_pred_classes, labels=np.arange(NUM_CLASSES))
+    print(cm)
+    print("=" * 60)
+    
+    # บันทึกรูปกราฟ Confusion Matrix
+    cm_img_path = os.path.join(REPORTS_DIR, f"confusion_matrix_{timestamp}.png")
+    try:
+        plot_confusion_matrix(cm, class_names[:NUM_CLASSES], cm_img_path)
+        print(f"  [Metrics] บันทึกรูปกราฟ Confusion Matrix เรียบร้อยแล้วที่: {cm_img_path}")
+    except Exception as e:
+        print(f"  [Warning] ไม่สามารถบันทึกรูป Confusion Matrix ได้: {e}")
+        
+    # บันทึกรูปกราฟ ROC Curve
+    roc_img_path = os.path.join(REPORTS_DIR, f"roc_curve_{timestamp}.png")
+    try:
+        plot_roc_curve(y_test, y_pred, class_names[:NUM_CLASSES], roc_img_path)
+        print(f"  [Metrics] บันทึกรูปกราฟ ROC Curve เรียบร้อยแล้วที่: {roc_img_path}")
+    except Exception as e:
+        print(f"  [Warning] ไม่สามารถบันทึกรูป ROC Curve ได้: {e}")
+        
+    # บันทึกรายงานแบบตัวอักษรลงไฟล์ข้อความ
+    report_txt_path = os.path.join(REPORTS_DIR, f"classification_report_{timestamp}.txt")
+    try:
+        with open(report_txt_path, 'w', encoding='utf-8') as f:
+            f.write("=== AI Exercise Model Evaluation Report ===\n")
+            f.write(f"Test Loss: {loss:.4f}\n")
+            f.write(f"Test Accuracy: {accuracy*100:.2f}%\n\n")
+            f.write("=== Classification Report ===\n")
+            f.write(classification_report(y_true_classes, y_pred_classes, labels=np.arange(NUM_CLASSES), target_names=class_names[:NUM_CLASSES]))
+            f.write("\n=== Confusion Matrix ===\n")
+            f.write(np.array2string(cm))
+            f.write("\n\n=== ROC AUC Scores ===\n")
+            from sklearn.metrics import roc_curve, auc
+            for i in range(NUM_CLASSES):
+                if len(np.unique(y_test[:, i])) > 1:
+                    fpr_temp, tpr_temp, _ = roc_curve(y_test[:, i], y_pred[:, i])
+                    auc_val = auc(fpr_temp, tpr_temp)
+                    f.write(f"{class_names[i]} AUC: {auc_val:.4f}\n")
+                else:
+                    f.write(f"{class_names[i]} AUC: N/A (No positive samples in test split)\n")
+        print(f"  [Report] บันทึกรายงานผลการประเมินเรียบร้อยแล้วที่: {report_txt_path}")
+    except Exception as e:
+        print(f"  [Warning] ไม่สามารถบันทึกรายงานเป็นไฟล์ข้อความได้: {e}")
+    
+    # เปิดรูปภาพและไฟล์รายงานสรุปเมื่อเทรนเสร็จสมบูรณ์
     try:
         if os.name == 'nt':
-            os.startfile(os.path.abspath(history_img_path))
-            print("  🖼️  เปิดรูปภาพสรุปผลกราฟการเทรนอัตโนมัติ...")
+            if os.path.exists(history_img_path):
+                os.startfile(os.path.abspath(history_img_path))
+            if os.path.exists(cm_img_path):
+                os.startfile(os.path.abspath(cm_img_path))
+            if os.path.exists(roc_img_path):
+                os.startfile(os.path.abspath(roc_img_path))
+            if os.path.exists(report_txt_path):
+                os.startfile(os.path.abspath(report_txt_path))
+            print("  [Visuals] เปิดรูปภาพสรุปผลและไฟล์รายงานอัตโนมัติ...")
     except Exception:
         pass
 
     # พิมพ์คำแนะนำการอ่านกราฟ
     print("\n" + "=" * 60)
-    print("  💡 วิธีการวิเคราะห์ความเสถียรของโมเดลจากกราฟ:")
+    print("  [Guide] วิธีการวิเคราะห์ความเสถียรของโมเดลจากกราฟ:")
     print("  1. โมเดลที่ดี (Good Fit):")
     print("     - Loss ทั้งคู่ลดลงและอยู่ระดับต่ำใกล้เคียงกัน (ลู่เข้าหากัน)")
     print("     - Accuracy ทั้งคู่เพิ่มขึ้นและอยู่ระดับสูงใกล้เคียงกัน (ลู่เข้าหากัน)")

@@ -1,0 +1,24 @@
+=== AI Exercise Model Evaluation Report ===
+Test Loss: 0.0607
+Test Accuracy: 97.38%
+
+=== Classification Report ===
+                       precision    recall  f1-score   support
+
+                 Idle       0.99      0.96      0.97       507
+Squat_Correct/Push-up       0.97      0.99      0.98       336
+         Jumping_Jack       0.93      1.00      0.96       150
+
+             accuracy                           0.97       993
+            macro avg       0.96      0.98      0.97       993
+         weighted avg       0.97      0.97      0.97       993
+
+=== Confusion Matrix ===
+[[486  10  11]
+ [  5 331   0]
+ [  0   0 150]]
+
+=== ROC AUC Scores ===
+Idle AUC: 0.9983
+Squat_Correct/Push-up AUC: 0.9991
+Jumping_Jack AUC: 0.9999

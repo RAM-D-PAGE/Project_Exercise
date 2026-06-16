@@ -70,10 +70,9 @@ except ImportError:
 # ============================================================
 
 EXERCISE_OPTIONS = {
-    '1': {'name': 'Squat_Correct',       'display': 'Squat (Correct)'},
-    '2': {'name': 'Squat_Incorrect',     'display': 'Squat (Incorrect)'},
-    '3': {'name': 'Jumping_Jack',        'display': 'Jumping Jack'},
-    '4': {'name': 'Pushup',              'display': 'Push-up'},
+    '1': {'name': 'Squat_Correct',       'display': 'Squat'},
+    '2': {'name': 'Jumping_Jack',        'display': 'Jumping Jack'},
+    '3': {'name': 'Pushup',              'display': 'Push-up'},
 }
 
 MODES = {
@@ -112,12 +111,12 @@ def menu_select_exercise():
     print()
 
     while True:
-        choice = input("  👉 กดเลข (1-4): ").strip()
+        choice = input("  👉 กดเลข (1-3): ").strip()
         if choice in EXERCISE_OPTIONS:
             selected = EXERCISE_OPTIONS[choice]
             print(f"\n  ✅ เลือก: {selected['display']}")
             return selected
-        print("  ❌ กรุณากดเลข 1-4 เท่านั้น")
+        print("  ❌ กรุณากดเลข 1-3 เท่านั้น")
 
 
 def menu_select_mode():

@@ -26,8 +26,7 @@ from utils.geometry import calculate_angle
 EXERCISE_CLASSES = {
     '0': 'Idle',
     '1': 'Squat_Correct',
-    '2': 'Squat_Incorrect',
-    '3': 'Jumping_Jack'
+    '2': 'Jumping_Jack'
 }
 
 BASE_DATA_DIR = "data"

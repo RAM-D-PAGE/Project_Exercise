@@ -36,14 +36,12 @@ from utils.geometry import calculate_angle
 # === Class Mapping (ตรงกับ collect_data.py) ===
 EXERCISE_OPTIONS = {
     '1': {'name': 'Squat_Correct',        'mode': 'SQUAT',             'class_id': 1},
-    '2': {'name': 'Squat_Incorrect',       'mode': 'SQUAT_INCORRECT',   'class_id': 2},
-    '3': {'name': 'Jumping_Jack',          'mode': 'JUMPING_JACK',      'class_id': 3},
-    '4': {'name': 'Idle',                  'mode': 'IDLE',              'class_id': 0},
+    '2': {'name': 'Jumping_Jack',          'mode': 'JUMPING_JACK',      'class_id': 2},
+    '3': {'name': 'Push-up',              'mode': 'PUSHUP',            'class_id': 1},
 }
 
 CLASS_NAMES = {
-    0: 'Idle', 1: 'Squat_Correct', 2: 'Squat_Incorrect',
-    3: 'Jumping_Jack',
+    0: 'Idle', 1: 'Squat_Correct', 2: 'Jumping_Jack',
 }
 
 FPS_TARGET = 20
@@ -73,12 +71,12 @@ def menu_select_exercise():
     print()
 
     while True:
-        choice = input("  👉 กดเลข (1-4): ").strip()
+        choice = input("  👉 กดเลข (1-3): ").strip()
         if choice in EXERCISE_OPTIONS:
             selected = EXERCISE_OPTIONS[choice]
             print(f"\n  ✅ เลือก: {selected['name']}")
             return selected
-        print("  ❌ กรุณากดเลข 1-4 เท่านั้น")
+        print("  ❌ กรุณากดเลข 1-3 เท่านั้น")
 
 
 def menu_select_input_mode():
