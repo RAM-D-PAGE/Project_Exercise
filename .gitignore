@@ -29,3 +29,10 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Large binary files
+*.mp4
+*.avi
+*.mov
+models/
+
