@@ -26,11 +26,11 @@ class GeometryEngine(ExerciseEngine):
         """
         ex_name = self.exercise_name.upper()
         
-        if ex_name == "SQUAT" or ex_name == "SQUAT_CORRECT":
+        if "SQUAT" in ex_name:
             return self._process_squat(landmarks)
-        elif ex_name == "PUSHUP" or ex_name == "PUSH_UPS":
+        elif "PUSHUP" in ex_name or "PUSH_UP" in ex_name:
             return self._process_pushup(landmarks)
-        elif ex_name == "JUMPING_JACK":
+        elif "JUMPING" in ex_name or "JACK" in ex_name:
             return self._process_jumping_jack(landmarks)
         
         # Default fallback if exercise is unknown

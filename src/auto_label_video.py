@@ -38,8 +38,7 @@ EXERCISE_OPTIONS = {
     '1': {'name': 'Squat_Correct',        'mode': 'SQUAT',             'class_id': 1},
     '2': {'name': 'Squat_Incorrect',       'mode': 'SQUAT_INCORRECT',   'class_id': 2},
     '3': {'name': 'Jumping_Jack',          'mode': 'JUMPING_JACK',      'class_id': 3},
-    '4': {'name': 'Push-up',               'mode': 'PUSHUP',            'class_id': 1},
-    '5': {'name': 'Idle',                  'mode': 'IDLE',              'class_id': 0},
+    '4': {'name': 'Idle',                  'mode': 'IDLE',              'class_id': 0},
 }
 
 CLASS_NAMES = {
@@ -74,12 +73,12 @@ def menu_select_exercise():
     print()
 
     while True:
-        choice = input("  👉 กดเลข (1-5): ").strip()
+        choice = input("  👉 กดเลข (1-4): ").strip()
         if choice in EXERCISE_OPTIONS:
             selected = EXERCISE_OPTIONS[choice]
             print(f"\n  ✅ เลือก: {selected['name']}")
             return selected
-        print("  ❌ กรุณากดเลข 1-5 เท่านั้น")
+        print("  ❌ กรุณากดเลข 1-4 เท่านั้น")
 
 
 def menu_select_input_mode():
@@ -211,19 +210,6 @@ def detect_exercise_phase(lm_list, exercise_mode):
         avg_knee = (l_knee + r_knee) / 2
         return avg_knee < 160, avg_knee, "Knee"
 
-    elif exercise_mode == 'PUSHUP':
-        l_elbow = calculate_angle(
-            [lm_list[11][0], lm_list[11][1]],
-            [lm_list[13][0], lm_list[13][1]],
-            [lm_list[15][0], lm_list[15][1]]
-        )
-        r_elbow = calculate_angle(
-            [lm_list[12][0], lm_list[12][1]],
-            [lm_list[14][0], lm_list[14][1]],
-            [lm_list[16][0], lm_list[16][1]]
-        )
-        avg_elbow = (l_elbow + r_elbow) / 2
-        return avg_elbow < 150, avg_elbow, "Elbow"
 
     elif exercise_mode == 'JUMPING_JACK':
         l_arm = calculate_angle(
